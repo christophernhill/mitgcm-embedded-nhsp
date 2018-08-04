@@ -1,63 +1,64 @@
 /*
-  DCT-II definition
-  1-d
-  X(k) = (2/N)^0.5*s(k)*sum_(n=0)^(n=N-1)[x(n)cos((pi*k*(n+0.5)/N) : k=0,N-1
-  { s(0) = 1/(2^0.5); s(k=1,N-1)=1
-  2-d
-  X(k1,k2)=((2/N)^0.5)*((2/M)^0.5)*sum_(n=0)^(n=N-1),sum_(m=0)^(m=M-1)
-           s(k1)*s(k2)*
-           x(n,m)*
-           cos(pi*k1*(n+0.5)/N)*
-           cos(pi*k2*(m+0.5)/M
-           : k1=0,N-1;k2=0,M-1
-  { s(k[1,2]=0)=1/(2^0.5); s(k[1,2]=1,[N,M]-1)=1}
-  DFT equivalent of DCT-II involves creating mirrored sequence
-  padded with zero between points. Scaled appropriately real
-  part of the first N,M DFT entries will be equivalent to DCT-II
+  Discrete Cosine Transform II (DCT-II) definition:
+  
+  1D:
+    X_k = \sqrt{2/N} * s_k * \sum_{n=0}^{n=N-1} [x_n * \cos(\pi*k*(n+1/2)/N), k = 0, 1, 2, ..., N-1
+    where s_0 = 1/sqrt{2} and s_k = 1 for k = 1, 2, ..., N-1.
+  
+  2D:
+    X_k1,k2 = \sqrt{2/N} * \sqrt{2/M} * \sum_{n=0}^{n=N-1} \sum_{m=0}^{m=M-1} s_k1 * s_k2 * x_n,m
+              * \cos(pi*k1*(n+1/2)/N) * \cos(\pi*k2*(m+1/2)/M), k1 = 0, 1, ..., N-1, k2 = 0, 1, 2, ..., M-1
+    where s_0i = 1/sqrt{2} and s_ki = 1 for i=1,2 and k1,k2 = 1, 2, ..., [N,M] - 1
+  
+  The Discrete Fourier Transform (DFT) equivalent of DCT-II involves creating a mirrored sequence padded with zeros
+  between points. Scaled appropriately, the real part of the first N,M DFT entries will be equivalent to the DCT-II
   coefficients.
+  */
 
- mpirun -n 2 ./a.out  30 20 5 30 10 1
+/*
+  To run using MPI:
+    mpirun -n 2 ./a.out  30 20 5 30 10 1
  
- Discrete cosine transform using FFTW MPI interface. This example code for 3-d (i,k,j) layout
- where domain is block distributed in the last dimension (j) per FFTW approach. 
- Running using command
- 
- mpirun -prepend-pattern 'RANK_%r: ' -n 2 ./a.out  7 6 1 7 3 1 
- would apply DCT and inverse for ni=7 x nj=6 x nk=1 domain (args 1,2,3) where domain is split
- in 2 equal parts in j, each of size 7 x 3 (args 4, 5). The transform and inverse is computed  x 1 (last arg, arg 6).
- 
- Compiling looks like
- cd eofe7.mit.edu:/nfs/cnhlab002/cnh/src/fftw/test_code
- module load intel/2017-01
- module load impi/2017-01
- mpiicc -qopenmp -O -xHost fftw_dct_mpi_nd.c -I../../../opt/fftw/usr/local/include -L../../../opt/fftw/usr/local/lib -lfftw3_mpi -lfftw3
+  The DCT using FFTW MPI interface. This example code for 3-d (i,k,j) layout where domain is block distributed in the
+  last dimension (j) per FFTW approach. 
 
+  Running using the command
+    mpirun -prepend-pattern 'RANK_%r: ' -n 2 ./a.out  7 6 1 7 3 1 
+  would apply DCT and inverse for ni=7 x nj=6 x nk=1 domain (args 1,2,3) where domain is split in 2 equal parts in j,
+  each of size 7 x 3 (args 4, 5). The transform and inverse is computed  x 1 (last arg, arg 6).
+ 
+  Compilation instructions:
+    cd eofe7.mit.edu:/nfs/cnhlab002/cnh/src/fftw/test_code
+    module load intel/2017-01
+    module load impi/2017-01
+    mpiicc -qopenmp -O -xHost fftw_dct_mpi_nd.c -I../../../opt/fftw/usr/local/include -L../../../opt/fftw/usr/local/lib
+    -lfftw3_mpi -lfftw3
 */
+
+
+#include <stdio.h>
+#include <stdlib.h>
 #include <math.h>
+#include <time.h>
+#include <omp.h>
+
 #include <mpi.h>
 #include <fftw3.h>
 #include <fftw3-mpi.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <time.h>
-#include <omp.h>
 
 #undef  DIMS_1
 #undef  DIMS_2
 #define DIMS_3
 
-#ifdef DIMS_3
-#define NSX   1
-#define SNX   192
-#define NSY   1
-#define SNY   192
-#define NR    150
-#define N     SNX
-#define M     SNY
-#define L     NR
-#define NMID  95
-#define MMID  95
-#define LMID  74
+// TODO: Describe the meaning of these variables.
+
+#ifdef DIMS_1
+#define N     5
+#define M     1
+#define L     1
+#define NMID  2
+#define MMID  0
+#define LMID  0
 #define NRANK 3
 #define I3(a,b,c) a+b*N+c*M*N
 #endif
@@ -73,13 +74,18 @@
 #define I3(a,b,c) a+b*N+c*M*N
 #endif
 
-#ifdef DIMS_1
-#define N     5
-#define M     1
-#define L     1
-#define NMID  2
-#define MMID  0
-#define LMID  0
+#ifdef DIMS_3
+#define NSX   1
+#define SNX   192
+#define NSY   1
+#define SNY   192
+#define NR    150
+#define N     SNX
+#define M     SNY
+#define L     NR
+#define NMID  95
+#define MMID  95
+#define LMID  74
 #define NRANK 3
 #define I3(a,b,c) a+b*N+c*M*N
 #endif
