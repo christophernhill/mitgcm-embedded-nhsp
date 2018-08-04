@@ -90,428 +90,492 @@
 #define I3(a,b,c) a+b*N+c*M*N
 #endif
 
+
+/**
+* Turn local index into equivalent global index.
+*
+* @param mpiRank
+* @param idl
+* @param jdl
+* @param kdl
+* @param nx
+* @param ny
+* @param nr
+* @param snx
+* @param sny
+* @param ig
+* @param jg
+* @param kg
+*
+* @return 
+*/
 void loc2glob(int mpiRank,
-              int idl,int jdl,int kdl,
-              int nx,int ny,int nr,int snx,int sny,
-              int *ig,int *jg,int *kg)
- // Turn local index into equivalent global index
- {
+              int idl, int jdl, int kdl,
+              int nx, int ny, int nr, int snx, int sny,
+              int *ig, int *jg, int *kg)
+{
   int npx, npy;
   int mypx, mypy;
+
   // Get calling rank index in process grid
-  npx=nx/snx;
-  npy=ny/sny;
-  mypx=mpiRank%npx;
-  mypy=mpiRank/npx;
-  *ig=mypx*snx+idl;
-  *jg=mypy*sny+jdl;
-  *kg=kdl;
+  npx = nx / snx;
+  npy = ny / sny;
+
+  mypx = mpiRank % npx;
+  mypy = mpiRank / npx;
+  
+  *ig = mypx * snx + idl;
+  *jg = mypy * sny + jdl;
+  *kg = kdl;
+  
   return;
  }
+
+
+/**
+* Turn global index into process local index - return -1 if global index not in the local index space.
+*
+* @param mpiRank
+* @param ig
+* @param jg
+* @param kg
+* @param nx
+* @param ny
+* @param nr
+* @param snx
+* @param sny
+* @param il
+* @param jl
+* @param kl
+*
+* @return 
+*/
 void glob2loc(int mpiRank,
               int  ig,  int  jg,  int  kg,
               int nx, int ny, int nr, int snx, int sny, 
-              int *il,  int *jl,  int *kl) {
- int  ilog,  jlog, klog;
- int   npx,   npy;
+              int *il,  int *jl,  int *kl)
+{
+ int ilog,  jlog, klog;
+ int npx,   npy;
  int ioffl, joffl, koffl;
- int  mypx,  mypy;
- // Turn global index into process local index - return -1 if global index not in the local index space.
- npx=nx/snx;
- npy=ny/sny;
- mypx=mpiRank%npx;
- mypy=mpiRank/npx;
- ilog=mypx*snx;
- jlog=mypy*sny;
- ioffl=ig-ilog;
- joffl=jg-jlog;
- if ( ioffl >= 0 & ioffl < snx ) {
-  *il=ioffl;
- } else {
-  *il=-1; *jl=-1;
- }
- if ( joffl >= 0 & joffl < sny ) {
-  *jl=joffl;
- } else {
-  *il=-1; *jl=-1;
- }
- klog=0;
- koffl=kg-klog;
- *kl=koffl;
+ int mypx,  mypy;
 
- // printf ("GLOB2LOC: r, ig, jg, kg = %d, %d, %d, %d\n",mpiRank,ig,jg,kg);
- // printf ("GLOB2LOC: r, ilog, jlog = %d, %d, %d    \n",mpiRank,ilog,jlog);
- // printf ("GLOB2LOC: r, ioffl,joffl= %d, %d, %d    \n",mpiRank,ioffl,joffl);
- // printf ("GLOB2LOC: r, il, jl, kl = %d, %d, %d, %d\n",mpiRank,*il,*jl,*kl);
+ npx = nx / snx;
+ npy = ny / sny;
+ 
+ mypx = mpiRank % npx;
+ mypy = mpiRank / npx;
+ 
+ ilog = mypx * snx;
+ jlog = mypy * sny;
+ 
+ ioffl = ig - ilog;
+ joffl = jg - jlog;
+ 
+ if (ioffl >= 0 & ioffl < snx) {
+  *il = ioffl;
+ } else {
+  *il = -1;
+  *jl = -1;
+ }
+
+ if (joffl >= 0 & joffl < sny) {
+  *jl = joffl;
+ } else {
+  *il = -1;
+  *jl = -1;
+ }
+
+ klog = 0;
+ koffl = kg - klog;
+ *kl = koffl;
+
+ // printf("GLOB2LOC: r, ig, jg, kg = %d, %d, %d, %d\n",mpiRank,ig,jg,kg);
+ // printf("GLOB2LOC: r, ilog, jlog = %d, %d, %d    \n",mpiRank,ilog,jlog);
+ // printf("GLOB2LOC: r, ioffl,joffl= %d, %d, %d    \n",mpiRank,ioffl,joffl);
+ // printf("GLOB2LOC: r, il, jl, kl = %d, %d, %d, %d\n",mpiRank,*il,*jl,*kl);
+
  return;
 }
               
 
-main(int argc, char *argv[]){
-
-      int i,j,k,ioff;
-      double fac;
-      fftw_plan plan;
-      fftw_complex in[L*M*N], out[L*M*N];
-      int  rank_list[NRANK];
-      rank_list[0]=L;
-      rank_list[1]=M;
-      rank_list[2]=N;
-
-      int mpiRank;
-      int mpiSize;
-      int mpiComm;
-
-      // Read command line args
-      // ./a.out  Nx  Ny  Nr sNx sNy NT
-      //  Nx  - total size in X
-      //  Ny  - total size in Y
-      //  Nr  - total size in Z
-      //  sNx - tile size in X (must divide Nx exactly)
-      //  sNy - tile size in Y (must divide Ny exactly)
-      //  NT  - number of transforms
-      // ./a.out 192 192 150 36 36 100
-
-      if ( argc != 7 ) {
-       printf("ERROR: Not enough args set?\n");
-       printf("Usage: %s Nx Ny Nr sNx sNy NT\n",argv[0]);
-       exit(-1);
-      }
-      int Nx, Ny, Nr, sNx, sNy, NTrans, nmatch, nSx, nSy;
-      nmatch=sscanf(argv[1],"%d",&Nx);
-      if ( nmatch != 1 || Nx <= 0) {
-       printf("ERROR: Nx not set?\n");
-       printf("Usage: %s Nx Ny Nr sNx sNy NT\n",argv[0]);
-       exit(-1);
-      }
-      nmatch=sscanf(argv[2],"%d",&Ny);
-      if ( nmatch != 1 ) {
-       printf("ERROR: Ny not set?\n");
-       printf("Usage: %s Nx Ny Nr sNx sNy NT\n",argv[0]);
-       exit(-1);
-      }
-      nmatch=sscanf(argv[3],"%d",&Nr);
-      if ( nmatch != 1 ) {
-       printf("ERROR: Nr not set?\n");
-       printf("Usage: %s Nx Ny Nr sNx sNy NT\n",argv[0]);
-       exit(-1);
-      }
-      nmatch=sscanf(argv[4],"%d",&sNx);
-      if ( nmatch != 1 ) {
-       printf("ERROR: sNx not set?\n");
-       printf("Usage: %s Nx Ny Nr sNx sNy NT\n",argv[0]);
-       exit(-1);
-      }
-      nmatch=sscanf(argv[5],"%d",&sNy);
-      if ( nmatch != 1 ) {
-       printf("ERROR: sNy not set?\n");
-       printf("Usage: %s Nx Ny Nr sNx sNy NT\n",argv[0]);
-       exit(-1);
-      }
-      nmatch=sscanf(argv[6],"%d",&NTrans);
-      if ( nmatch != 1 ) {
-       printf("ERROR: NT not set?\n");
-       printf("Usage: %s Nx Ny Nr sNx sNy NT\n",argv[0]);
-       exit(-1);
-      }
-
-/*
-    Try DCT-II using FFTW REDFT10 _N interface and its
-    inverse REDFT01.
-*/
-
-    MPI_Init(&argc, &argv);
-    mpiComm=MPI_COMM_WORLD;
-
-    fftw_mpi_init();
-
-    MPI_Comm_rank(mpiComm, &mpiRank);
-    MPI_Comm_size(mpiComm, &mpiSize);
-
-    // Check sizes
-    if ( sNx*sNy*mpiSize != Nx*Ny ) {
-     printf("ERROR: sNx*sNy*mpiSize != Nx*Ny\n");
-     exit(-1);
-    }
-    nSx=floor(Nx/sNx);
-    if ( sNx*nSx != Nx )
-    {
-     printf("ERROR: sNx*nSx != Nx\n");
-     exit(-1);
-    }
-    nSy=floor(Ny/sNy);
-    if ( sNy*nSy != Ny )
-    {
-     printf("ERROR: sNy*nSy != Ny\n");
-     exit(-1);
-    }
-    if ( nSx*nSy != mpiSize )
-    {
-     printf("ERROR: nSy*nSx != mpiSize\n");
-     exit(-1);
-    }
-
-    // Allocate local tile data array and scale factor array
-#define _I3LOC(a,b,c) a+(c*sNx)+(b*sNx*Nr)
-    double *mytData,*mytScale;
-    double tr;
-    int    sT,idl,jdl,kdl,idg,jdg,kdg;
-    sT=sNx*sNy*Nr;
-    mytData=(double *)malloc(sT*sizeof(double));
-    mytScale=(double *)malloc(sT*sizeof(double));
-    for(jdl=0;jdl<sNy;++jdl){
-     for(kdl=0;kdl<Nr;++kdl){
-      for(idl=0;idl<sNx;++idl){
-       tr=(double)( rand() )/(double)(RAND_MAX)-0.5;
-       mytData[_I3LOC(idl,jdl,kdl)]=0.+tr/1.e3;
-    } } }
-    idg=(int)(double)Nx/2.;
-    jdg=(int)(double)Ny/2.;
-    kdg=(int)(double)Nr/2.;
-    double fracW;
-    fracW=-1./4.;
-    if ( Nr > 1 ) { fracW=-1./6.; }
-    glob2loc(mpiRank,idg,jdg,kdg,Nx,Ny,Nr,sNx,sNy,&idl,&jdl,&kdl);
-    if ( idl > 0 ) { mytData[_I3LOC(idl,jdl,kdl)]=1.; }
-
-    glob2loc(mpiRank,idg,jdg+1,kdg,Nx,Ny,Nr,sNx,sNy,&idl,&jdl,&kdl);
-    if ( idl > 0 ) { mytData[_I3LOC(idl,jdl,kdl)]=fracW; }
-    glob2loc(mpiRank,idg,jdg-1,kdg,Nx,Ny,Nr,sNx,sNy,&idl,&jdl,&kdl);
-    if ( idl > 0 ) { mytData[_I3LOC(idl,jdl,kdl)]=fracW; }
-
-    glob2loc(mpiRank,idg+1,jdg,kdg,Nx,Ny,Nr,sNx,sNy,&idl,&jdl,&kdl);
-    if ( idl > 0 ) { mytData[_I3LOC(idl,jdl,kdl)]=fracW; }
-    glob2loc(mpiRank,idg-1,jdg,kdg,Nx,Ny,Nr,sNx,sNy,&idl,&jdl,&kdl);
-    if ( idl > 0 ) { mytData[_I3LOC(idl,jdl,kdl)]=fracW; }
-
-    if ( Nr > 1 ) {
-     glob2loc(mpiRank,idg,jdg,kdg+1,Nx,Ny,Nr,sNx,sNy,&idl,&jdl,&kdl);
-     if ( idl > 0 ) { mytData[_I3LOC(idl,jdl,kdl)]=fracW; }
-     glob2loc(mpiRank,idg,jdg,kdg-1,Nx,Ny,Nr,sNx,sNy,&idl,&jdl,&kdl);
-     if ( idl > 0 ) { mytData[_I3LOC(idl,jdl,kdl)]=fracW; }
-    }
-
-    // Set scale factor array elements to eigenvalues x wavenumber bit
-    // 3 factors
-    // fac_i :  -[\frac{2\sin(\frac{\pi \kappa}{2nx})}{\Delta x}]^{2}
-    // fac_j :  -[\frac{2\sin(\frac{\pi \kappa}{2ny})}{\Delta y}]^{2}
-    // fac_k :  -[\frac{2\sin(\frac{\pi \kappa}{2nz})}{\Delta z}]^{2}
-    // scaling is 1/(fac_i + fac_j + fac_k)
-    // Temp arrays along each axis (full domain size on each process, but only 1d).
-    double *lambda_fac_i, *lambda_fac_j, *lambda_fac_k;
-    double dx, dy, dz;
-    double tmp1, tmp2, tmp3;
-    dx=1.;
-    dy=1.;
-    dz=1.;
-    lambda_fac_i = (double *)malloc(Nx*sizeof(double));
-    lambda_fac_j = (double *)malloc(Ny*sizeof(double));
-    lambda_fac_k = (double *)malloc(Nr*sizeof(double));
-    lambda_fac_i[0]=0.;
-    for (i=1;i<Nx;++i) {
-     tmp1=(M_PI*(double)i)/(2.*(double)Nx);
-     tmp2=2.*sin(tmp1);
-     tmp3=dx;
-     lambda_fac_i[i]=-pow((tmp2/tmp3),2.);
-    }
-    lambda_fac_j[0]=0.;
-    for (j=1;j<Ny;++j) {
-     tmp1=(M_PI*(double)j)/(2.*(double)Ny);
-     tmp2=2.*sin(tmp1);
-     tmp3=dy;
-     lambda_fac_j[j]=-pow((tmp2/tmp3),2.);
-    }
-    lambda_fac_k[0]=0.;
-    for (k=1;k<Nr;++k) {
-     tmp1=(M_PI*(double)k)/(2.*(double)Nr);
-     tmp2=2.*sin(tmp1);
-     tmp3=dz;
-     lambda_fac_k[k]=-pow((tmp2/tmp3),2.);
-    }
-    // Now fill out tile local values
-    int ig, jg, kg;
-    for(jdl=0;jdl<sNy;++jdl){
-     for(kdl=0;kdl<Nr;++kdl){
-      for(idl=0;idl<sNx;++idl){
-       loc2glob(mpiRank,
-                idl,jdl,kdl,
-                Nx,Ny,Nr,sNx,sNy,
-                &ig,&jg,&kg);
-       // ig=0;
-       // jg=0;
-       // kg=0;
-       tmp1=lambda_fac_i[ig];
-       tmp2=lambda_fac_j[jg];
-       tmp3=lambda_fac_k[kg];
-       mytScale[_I3LOC(idl,jdl,kdl)]=tmp1+tmp2+tmp3;
-    } } }
-    if ( mpiRank == 0 ) {
-     mytScale[_I3LOC(0,0,0)]=1.;
-    };
-    for(jdl=0;jdl<sNy;++jdl){
-     for(kdl=0;kdl<Nr;++kdl){
-      for(idl=0;idl<sNx;++idl){
-       mytScale[_I3LOC(idl,jdl,kdl)]=1./mytScale[_I3LOC(idl,jdl,kdl)];
-    } } }
-
-// void glob2loc(int mpiRank,
-//               int  ig,  int  jg,  int  kg,
-//               int nx, int ny, int nr, int snx, int sny,
-//               int *il,  int *jl,  int *kl) {
-
-
-    for (j=0;j<sNy;++j) {
-     for (k=0;k<Nr;++k) {
-      for (i=0;i<sNx;++i) {
-       ioff=_I3LOC(i,j,k);
-       loc2glob(mpiRank,
-                i,j,k,
-                Nx,Ny,Nr,sNx,sNy,
-                &ig,&jg,&kg);
-       if ( abs(idg - ig) < 2 &
-            abs(jdg - jg) < 2 &
-            abs(kdg - kg) < 2 ) {
-        printf("INITIAL mytData: ioff, mytData(%d,%d,%d) = %d, %f\n",i,j,k,ioff,mytData[ioff]);
-       }
-      }
-     }
-    }
-
-    ptrdiff_t alloc_local_n, local_n0_n, local_0_start_n;
-    int       nrsizes=3;
-    ptrdiff_t howmany=1;
-    ptrdiff_t block0=FFTW_MPI_DEFAULT_BLOCK;
-    ptrdiff_t *rsizes;
-    rsizes=(ptrdiff_t *)malloc(nrsizes*sizeof(ptrdiff_t));
-    // Slowest first, fastest last. Start decomp is on first dimension.
-    rsizes[0]=Ny;
-    rsizes[1]=Nr;
-    rsizes[2]=Nx;
-    alloc_local_n = fftw_mpi_local_size_many(nrsizes,rsizes,howmany,block0,mpiComm,
-                     &local_n0_n, &local_0_start_n);
-    printf("local_n0_n = %d\n",local_n0_n);
-    printf("local_0_start_n = %d\n",local_0_start_n);
-
-    if ( local_n0_n != sNy ) {
-     // Check have input data that is distributed using 1-d block decomp, along slowest (left-most/first in C)
-     // dimension.
-     // If we don't then we would need to resdistribute the data to be that way.
-     printf("ERROR: local_n0_n != sNy\n");
-     exit(-1);
-    }
-    // if ( Nr != 1 ) {
-    //  printf("Nr != 1\n");
-    //  exit(-1);
-    // }
-
-    // Nd
-    double *data_nd;
-    data_nd = fftw_alloc_real(alloc_local_n);
-    fftw_r2r_kind kindArr[3];
-    kindArr[0]=FFTW_REDFT10;
-    kindArr[1]=FFTW_REDFT10;
-    kindArr[2]=FFTW_REDFT10;
-    fftw_plan plan_n1;
-    plan_n1 = fftw_mpi_plan_r2r(nrsizes,rsizes,data_nd,data_nd,mpiComm,
-                               kindArr,FFTW_EXHAUSTIVE);
-    kindArr[0]=FFTW_REDFT01;
-    kindArr[1]=FFTW_REDFT01;
-    kindArr[2]=FFTW_REDFT01;
-    fftw_plan plan_n2;
-    plan_n2 = fftw_mpi_plan_r2r(nrsizes,rsizes,data_nd,data_nd,mpiComm,
-                               kindArr,FFTW_EXHAUSTIVE);
+main(int argc, char *argv[])
+{
+  int i, j, k, ioff;
+  double fac;
+    
+  fftw_plan plan;
+  fftw_complex in[L*M*N], out[L*M*N];
   
-    for (j=0; j<local_n0_n; ++j) {
-     for (k=0; k<Nr; ++k) {
-      for (i=0; i<Nx; ++i ) {
-       data_nd[j*Nx*Nr+k*Nx+i]=mytData[j*Nx*Nr+k*Nx+i];
-      }
-     }
-    }
+  int rank_list[NRANK];
+  rank_list[0] = L;
+  rank_list[1] = M;
+  rank_list[2] = N;
 
-    for (k=0;k<Nr;++k) {
-     for (j=0;j<sNy;++j) {
-      for (i=0;i<sNx;++i) {
-       ioff=_I3LOC(i,j,k);
-       loc2glob(mpiRank,
-                i,j,k,
-                Nx,Ny,Nr,sNx,sNy,
-                &ig,&jg,&kg);
-       if ( abs(idg - ig) < 2 &
-            abs(jdg - jg) < 2 &
-            abs(kdg - kg) < 2 ) {
-        printf("BEFORE REDFT10: ioff, data_nd(%d,%d,%d) = %d, %f\n",i,j,k,ioff,data_nd[ioff]);
-       }
-      }
-     }
-    }
+  int mpiRank;
+  int mpiSize;
+  int mpiComm;
+
+  // Read command line args
+  // ./a.out  Nx  Ny  Nr sNx sNy NT
+  //  Nx  - total size in X
+  //  Ny  - total size in Y
+  //  Nr  - total size in Z
+  //  sNx - tile size in X (must divide Nx exactly)
+  //  sNy - tile size in Y (must divide Ny exactly)
+  //  NT  - number of transforms
+  // ./a.out 192 192 150 36 36 100
+
+  if (argc != 7) {
+   printf("ERROR: Not enough args set?\n");
+   printf("Usage: %s Nx Ny Nr sNx sNy NT\n", argv[0]);
+   exit(-1);
+  }
+
+  int Nx, Ny, Nr, sNx, sNy, NTrans, nmatch, nSx, nSy;
+
+  nmatch = sscanf(argv[1], "%d", &Nx);
+  if (nmatch != 1 || Nx <= 0) {
+    printf("ERROR: Nx not set?\n");
+    printf("Usage: %s Nx Ny Nr sNx sNy NT\n",argv[0]);
+    exit(-1);
+  }
+
+  nmatch = sscanf(argv[2], "%d", &Ny);
+  if (nmatch != 1) {
+    printf("ERROR: Ny not set?\n");
+    printf("Usage: %s Nx Ny Nr sNx sNy NT\n",argv[0]);
+    exit(-1);
+  }
+
+  nmatch = sscanf(argv[3], "%d", &Nr);
+  if (nmatch != 1) {
+    printf("ERROR: Nr not set?\n");
+    printf("Usage: %s Nx Ny Nr sNx sNy NT\n",argv[0]);
+    exit(-1);
+  }
+
+  nmatch = sscanf(argv[4], "%d", &sNx);
+  if (nmatch != 1) {
+    printf("ERROR: sNx not set?\n");
+    printf("Usage: %s Nx Ny Nr sNx sNy NT\n",argv[0]);
+    exit(-1);
+  }
+
+  nmatch = sscanf(argv[5], "%d", &sNy);
+  if (nmatch != 1) {
+    printf("ERROR: sNy not set?\n");
+    printf("Usage: %s Nx Ny Nr sNx sNy NT\n",argv[0]);
+    exit(-1);
+  }
+
+  nmatch = sscanf(argv[6], "%d", &NTrans);
+  if (nmatch != 1) {
+    printf("ERROR: NT not set?\n");
+    printf("Usage: %s Nx Ny Nr sNx sNy NT\n",argv[0]);
+    exit(-1);
+  }
+
+  // Try DCT-II using FFTW REDFT10 _N interface and its inverse REDFT01. 
+
+  MPI_Init(&argc, &argv);
+  mpiComm = MPI_COMM_WORLD;
+
+  fftw_mpi_init();
+
+  MPI_Comm_rank(mpiComm, &mpiRank);  // Get current process ID.
+  MPI_Comm_size(mpiComm, &mpiSize);  // Get number of processes.
+
+  // Check sizes
+  if (sNx*sNy*mpiSize != Nx*Ny) {
+    printf("ERROR: sNx*sNy*mpiSize != Nx*Ny\n");
+    exit(-1);
+  }
+
+  nSx = floor(Nx/sNx);
+  if (sNx*nSx != Nx) {
+    printf("ERROR: sNx*nSx != Nx\n");
+    exit(-1);
+  }
+
+  nSy = floor(Ny/sNy);
+  if (sNy*nSy != Ny) {
+    printf("ERROR: sNy*nSy != Ny\n");
+    exit(-1);
+  }
+
+  if (nSx*nSy != mpiSize) {
+    printf("ERROR: nSy*nSx != mpiSize\n");
+    exit(-1);
+  }
+
+  // Allocate local tile data array and scale factor array
+  #define _I3LOC(a,b,c) a+(c*sNx)+(b*sNx*Nr)
+    
+  double *mytData, *mytScale;
+  double tr;
+  int    sT, idl, jdl, kdl, idg, jdg, kdg;
   
-    double wt0mpi, wt1mpi;
-    wt0mpi=omp_get_wtime();
-    fftw_execute(plan_n1);
-    wt1mpi=omp_get_wtime();
-    printf ("Forward MPI wall time (plan_n1) = %f\n",wt1mpi-wt0mpi);
-    fftw_destroy_plan(plan_n1);
+  sT = sNx*sNy*Nr;
+  mytData = (double *) malloc(sT * sizeof(double));
+  mytScale = (double *) malloc(sT * sizeof(double));
 
-    for (k=0;k<Nr;++k) {
-     for (j=0;j<sNy;++j) {
-      for (i=0;i<sNx;++i) {
-       ioff=_I3LOC(i,j,k);
-       loc2glob(mpiRank,
-                i,j,k,
-                Nx,Ny,Nr,sNx,sNy,
-                &ig,&jg,&kg);
-       if ( abs(idg - ig) < 2 &
-            abs(jdg - jg) < 2 &
-            abs(kdg - kg) < 2 ) {
-        printf("AFTER REDFT10: ioff, data_nd(%d,%d,%d) = %d, %f\n",i,j,k,ioff,data_nd[ioff]);
-       }
+  for (jdl = 0; jdl < sNy; ++jdl) {
+    for (kdl = 0; kdl < Nr; ++kdl) {
+      for (idl = 0; idl < sNx; ++idl) {
+        tr = (double) (rand()) / (double) (RAND_MAX)-0.5;
+        mytData[_I3LOC(idl, jdl, kdl)] = 0. + tr/1.e3;
       }
-     }
     }
+  }
 
-    fac=1/(2.*Nx*2.*Ny*2.*Nr);  // NOW CHANGED
-    for (j=0; j<local_n0_n; ++j) {
-     for (k=0; k<Nr; ++k) {
-      for (i=0; i<Nx; ++i ) {
-       data_nd[j*Nx*Nr+k*Nx+i]=data_nd[j*Nx*Nr+k*Nx+i]*fac*mytScale[j*Nx*Nr+k*Nx+i];
-       // data_nd[j*Nx*Nr+k*Nx+i]=data_nd[j*Nx*Nr+k*Nx+i]*fac;
+  idg = (int) (double) Nx / 2.;
+  jdg = (int) (double) Ny / 2.;
+  kdg = (int) (double) Nr / 2.;
+
+  double fracW = -1./4.;
+
+  if (Nr > 1) { fracW = -1./6.; }
+
+  glob2loc(mpiRank, idg, jdg, kdg, Nx, Ny, Nr, sNx, sNy, &idl, &jdl, &kdl);
+  if (idl > 0) { mytData[_I3LOC(idl, jdl, kdl)] = 1.; }
+
+  glob2loc(mpiRank, idg, jdg+1, kdg, Nx, Ny, Nr, sNx, sNy, &idl, &jdl, &kdl);
+  if (idl > 0) { mytData[_I3LOC(idl, jdl, kdl)] = fracW; }
+
+  glob2loc(mpiRank, idg, jdg-1, kdg, Nx, Ny, Nr, sNx, sNy, &idl, &jdl, &kdl);
+  if (idl > 0) { mytData[_I3LOC(idl, jdl, kdl)] = fracW; }
+
+  glob2loc(mpiRank, idg+1, jdg, kdg, Nx, Ny, Nr, sNx, sNy, &idl, &jdl, &kdl);
+  if (idl > 0) { mytData[_I3LOC(idl, jdl, kdl)] = fracW; }
+  
+  glob2loc(mpiRank, idg-1, jdg, kdg, Nx, Ny, Nr, sNx, sNy, &idl, &jdl, &kdl);
+  if (idl > 0) { mytData[_I3LOC(idl, jdl, kdl)] = fracW; }
+
+  if (Nr > 1) {
+    glob2loc(mpiRank, idg, jdg, kdg+1, Nx, Ny, Nr, sNx, sNy, &idl, &jdl, &kdl);
+    if (idl > 0) { mytData[_I3LOC(idl, jdl, kdl)] = fracW; }
+
+    glob2loc(mpiRank, idg, jdg, kdg-1, Nx, Ny, Nr, sNx, sNy, &idl, &jdl, &kdl);
+    if (idl > 0) { mytData[_I3LOC(idl, jdl, kdl)] = fracW; }
+  }
+
+  // Set scale factor array elements to eigenvalues x wavenumber bit
+  // 3 factors
+  // fac_i :  -[\frac{2\sin(\frac{\pi \kappa}{2nx})}{\Delta x}]^{2}
+  // fac_j :  -[\frac{2\sin(\frac{\pi \kappa}{2ny})}{\Delta y}]^{2}
+  // fac_k :  -[\frac{2\sin(\frac{\pi \kappa}{2nz})}{\Delta z}]^{2}
+  // scaling is 1/(fac_i + fac_j + fac_k)
+  // Temp arrays along each axis (full domain size on each process, but only 1d).
+
+  double *lambda_fac_i, *lambda_fac_j, *lambda_fac_k;
+  double dx, dy, dz;
+  double tmp1, tmp2, tmp3;
+
+  dx=1.;
+  dy=1.;
+  dz=1.;
+
+  lambda_fac_i = (double *) malloc(Nx * sizeof(double));
+  lambda_fac_j = (double *) malloc(Ny * sizeof(double));
+  lambda_fac_k = (double *) malloc(Nr * sizeof(double));
+  
+  lambda_fac_i[0] = 0.;
+  for (i = 1; i < Nx; ++i) {
+    tmp1 = (M_PI * (double) i) / (2. * (double) Nx);
+    tmp2 = 2. * sin(tmp1);
+    tmp3 = dx;
+    lambda_fac_i[i] = -pow((tmp2/tmp3), 2.);
+  }
+
+  lambda_fac_j[0] = 0.;
+  for (j = 1; j < Ny; ++j) {
+    tmp1 = (M_PI * (double) j) / (2. * (double) Ny);
+    tmp2 = 2. * sin(tmp1);
+    tmp3 = dy;
+    lambda_fac_j[j] = -pow((tmp2/tmp3), 2.);
+  }
+
+  lambda_fac_k[0] = 0.;
+  for (k = 1; k < Nr; ++k) {
+    tmp1 = (M_PI * (double) k) / (2. * (double) Nr);
+    tmp2 = 2. * sin(tmp1);
+    tmp3 = dz;
+    lambda_fac_k[k] = -pow((tmp2/tmp3), 2.);
+  }
+
+  // Now fill out tile local values
+  int ig, jg, kg;
+  for (jdl = 0; jdl < sNy; ++jdl) {
+    for (kdl = 0; kdl < Nr; ++kdl) {
+      for (idl = 0; idl < sNx; ++idl) {
+        loc2glob(mpiRank, idl, jdl, kdl, Nx, Ny, Nr, sNx, sNy, &ig, &jg, &kg);
+        
+        tmp1 = lambda_fac_i[ig];
+        tmp2 = lambda_fac_j[jg];
+        tmp3 = lambda_fac_k[kg];
+        mytScale[_I3LOC(idl, jdl, kdl)] = tmp1 + tmp2 + tmp3;
       }
-     }
     }
+  }
 
-    wt0mpi=omp_get_wtime();
-    fftw_execute(plan_n2);
-    wt1mpi=omp_get_wtime();
-    printf ("Inverse MPI wall time (plan_n) = %f\n",wt1mpi-wt0mpi);
+  if (mpiRank == 0) { mytScale[_I3LOC(0, 0, 0)] = 1.; }
 
-    for (k=0;k<Nr;++k) {
-     for (j=0;j<sNy;++j) {
-      for (i=0;i<sNx;++i) {
-       ioff=_I3LOC(i,j,k);
-       loc2glob(mpiRank,
-                i,j,k,
-                Nx,Ny,Nr,sNx,sNy,
-                &ig,&jg,&kg);
-       if ( abs(idg - ig) < 2 &
-            abs(jdg - jg) < 2 &
-            abs(kdg - kg) < 2 ) {
-        printf("AFTER REDFT01: ioff, data_nd(%d,%d,%d) = %d, %f\n",i,j,k,ioff,data_nd[ioff]);
-       }
+  for (jdl = 0; jdl < sNy; ++jdl) {
+    for (kdl = 0; kdl < Nr; ++kdl) {
+      for (idl = 0; idl < sNx; ++idl) {
+        mytScale[_I3LOC(idl, jdl, kdl)] = 1./mytScale[_I3LOC(idl, jdl, kdl)];
       }
-     }
     }
+  }
 
-    free(mytData);
-    free(mytScale);
-    free(lambda_fac_i);
-    free(lambda_fac_j);
-    free(lambda_fac_k);
-    free(rsizes);
+  for (j = 0; j < sNy; ++j) {
+    for (k = 0; k < Nr; ++k) {
+      for (i = 0; i < sNx; ++i) {
+        ioff = _I3LOC(i, j, k);
+        loc2glob(mpiRank, i, j, k, Nx, Ny, Nr, sNx, sNy, &ig, &jg, &kg);
+        
+        // TODO: Do you mean &&?
+        if (abs(idg - ig) < 2 & abs(jdg - jg) < 2 & abs(kdg - kg) < 2) {
+          printf("INITIAL mytData: ioff, mytData(%d,%d,%d) = %d, %f\n", i, j, k, ioff, mytData[ioff]);
+        }
+      }
+    }
+  }
 
-    fftw_destroy_plan(plan_n2);
-    fftw_free(data_nd);
+  ptrdiff_t alloc_local_n, local_n0_n, local_0_start_n;
+  int       nrsizes = 3;
+  ptrdiff_t howmany = 1;
+  ptrdiff_t block0 = FFTW_MPI_DEFAULT_BLOCK;
+  ptrdiff_t *rsizes;
 
-    MPI_Finalize();
- 
+  rsizes = (ptrdiff_t *) malloc(nrsizes * sizeof(ptrdiff_t));
+  
+  // Slowest first, fastest last. Start decomp is on first dimension.
+  rsizes[0] = Ny;
+  rsizes[1] = Nr;
+  rsizes[2] = Nx;
+
+  alloc_local_n = fftw_mpi_local_size_many(nrsizes, rsizes, howmany, block0, mpiComm, &local_n0_n, &local_0_start_n);
+  
+  printf("local_n0_n = %d\n", local_n0_n);
+  printf("local_0_start_n = %d\n", local_0_start_n);
+
+   // Check have input data that is distributed using 1-d block decomp, along slowest (left-most/first in C) dimension.
+   // If we don't then we would need to resdistribute the data to be that way.
+  if (local_n0_n != sNy) {
+    printf("ERROR: local_n0_n != sNy\n");
+    exit(-1);
+  }
+
+  // if ( Nr != 1 ) {
+  //   printf("Nr != 1\n");
+  //   exit(-1);
+  // }
+
+  // Nd
+  double *data_nd;
+  data_nd = fftw_alloc_real(alloc_local_n);
+  
+  fftw_r2r_kind kindArr[3];
+  kindArr[0] = FFTW_REDFT10;
+  kindArr[1] = FFTW_REDFT10;
+  kindArr[2] = FFTW_REDFT10;
+
+  fftw_plan plan_n1;
+  plan_n1 = fftw_mpi_plan_r2r(nrsizes, rsizes, data_nd, data_nd, mpiComm, kindArr, FFTW_EXHAUSTIVE);
+  kindArr[0] = FFTW_REDFT01;
+  kindArr[1] = FFTW_REDFT01;
+  kindArr[2] = FFTW_REDFT01;
+  
+  fftw_plan plan_n2;
+  plan_n2 = fftw_mpi_plan_r2r(nrsizes, rsizes, data_nd, data_nd, mpiComm, kindArr, FFTW_EXHAUSTIVE);
+  
+  for (j = 0; j < local_n0_n; ++j) {
+    for (k = 0; k < Nr; ++k) {
+      for (i = 0; i < Nx; ++i) {
+        data_nd[j * Nx * Nr+k * Nx+i] = mytData[j * Nx * Nr+k * Nx+i];  // TODO: Brackets missing? BEDMAS?
+      }
+    }
+  }
+
+  for (k = 0; k < Nr; ++k) {
+    for (j = 0; j < sNy; ++j) {
+      for (i = 0; i < sNx; ++i) {
+        ioff = _I3LOC(i, j, k);
+        loc2glob(mpiRank, i, j, k, Nx, Ny, Nr, sNx, sNy, &ig, &jg, &kg);
+        
+        // TODO: Do you mean &&?
+        if (abs(idg - ig) < 2 & abs(jdg - jg) < 2 & abs(kdg - kg) < 2 ) {
+          printf("BEFORE REDFT10: ioff, data_nd(%d,%d,%d) = %d, %f\n", i, j, k, ioff, data_nd[ioff]);
+        }
+      }
+    }
+  }
+  
+  double wt0mpi, wt1mpi;
+  
+  wt0mpi = omp_get_wtime();
+  fftw_execute(plan_n1);
+  wt1mpi = omp_get_wtime();
+
+  printf ("Forward MPI wall time (plan_n1) = %f\n", wt1mpi-wt0mpi);
+
+  fftw_destroy_plan(plan_n1);
+
+  for (k = 0; k < Nr; ++k) {
+    for (j = 0; j < sNy; ++j) {
+      for (i = 0; i < sNx; ++i) {
+        ioff = _I3LOC(i, j, k);
+        loc2glob(mpiRank, i, j, k, Nx, Ny, Nr, sNx, sNy, &ig, &jg, &kg);
+        
+        // TODO: Do you mean &&?
+        if (abs(idg - ig) < 2 & abs(jdg - jg) < 2 & abs(kdg - kg) < 2 ) {
+          printf("AFTER REDFT10: ioff, data_nd(%d,%d,%d) = %d, %f\n", i, j, k, ioff, data_nd[ioff]);
+        }
+      }
+    }
+  }
+
+  fac = 1 / (2. * Nx * 2. * Ny * 2. * Nr);  // NOW CHANGED
+  for (j = 0; j < local_n0_n; ++j) {
+    for (k = 0; k < Nr; ++k) {
+      for (i = 0; i < Nx; ++i ) {
+        // TODO: Missing brackets?
+        data_nd[j * Nx * Nr+k * Nx+i] = data_nd[j * Nx * Nr+k * Nx+i] * fac * mytScale[j * Nx * Nr+k * Nx+i];
+        // data_nd[j*Nx*Nr+k*Nx+i]=data_nd[j*Nx*Nr+k*Nx+i]*fac;
+      }
+    }
+  }
+
+  wt0mpi = omp_get_wtime();
+  fftw_execute(plan_n2);
+  wt1mpi = omp_get_wtime();
+  printf ("Inverse MPI wall time (plan_n2) = %f\n", wt1mpi-wt0mpi);
+
+  for (k = 0; k < Nr; ++k) {
+    for (j = 0; j < sNy; ++j) {
+      for (i = 0; i < sNx; ++i) {
+        ioff = _I3LOC(i, j, k);
+        loc2glob(mpiRank, i, j, k, Nx, Ny, Nr, sNx, sNy, &ig, &jg, &kg);
+      
+        // TODO: Do you mean &&?
+        if (abs(idg - ig) < 2 & abs(jdg - jg) < 2 & abs(kdg - kg) < 2 ) {
+          printf("AFTER REDFT01: ioff, data_nd(%d,%d,%d) = %d, %f\n", i, j, k, ioff, data_nd[ioff]);
+        }
+      }
+    }
+  }
+
+  free(mytData);
+  free(mytScale);
+  free(lambda_fac_i);
+  free(lambda_fac_j);
+  free(lambda_fac_k);
+  free(rsizes);
+
+  fftw_destroy_plan(plan_n2);
+  fftw_free(data_nd);
+
+  MPI_Finalize();
 }
