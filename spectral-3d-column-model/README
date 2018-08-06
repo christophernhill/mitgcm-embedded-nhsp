@@ -1,0 +1,3 @@
+Compilation instructions
+
+mpiicc -qopenmp -O -xHost fftw_dct_mpi_nd.c -I /nfs/cnhlab002/cnh/opt/fftw/usr/local/include/ -L /nfs/cnhlab002/cnh/opt/fftw/usr/local/lib/ -lfftw3_mpi -lfftw3 -lm -o fftw_dct_mpi_nd
