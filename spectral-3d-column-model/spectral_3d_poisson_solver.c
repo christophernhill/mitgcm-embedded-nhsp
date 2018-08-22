@@ -7,7 +7,7 @@
 
 #define PI 3.14159265358979323846
 
-#define I3(i,j,k) i + j*Nx + k*Nx*Ny
+#define I3(i,j,k) i*Nx*Ny + j*Nx + k 
 
 /**
 * Corresponds to a 3D normal/Gaussian probability distribution with constant hard-coded means and
@@ -42,9 +42,9 @@ double trivariate_normal_distribution(double x, double y, double z) {
 }
 
 double triple_sine_waves(double x, double y, double z) {
-    static const double k_x = 2*PI / 1.0;
-    static const double k_y = 2*PI / 2.0;
-    static const double k_z = 2*PI / 5.0;
+    static const double k_x = 2*PI / 2.0;
+    static const double k_y = 2*PI / 5.0;
+    static const double k_z = 2*PI / 10.0;
 
     return sin(k_x * x) * sin(k_y * y) * sin(k_z * z);
 }
@@ -70,7 +70,7 @@ void main(int argc, char* argv[]) {
     double* rec = (double*) malloc(sizeof(double) * Nx*Ny*Nz);
 
     // Initialize in to 3D Gaussian.
-    printf("Initializing in array to trivariate Gaussian... ");
+    printf("Initializing input array... ");
     gettimeofday (&t1, NULL);
 
     double x, y, z;
@@ -84,7 +84,6 @@ void main(int argc, char* argv[]) {
                 // in[I3(i,j,k)] = (double) trivariate_normal_distribution(x, y, z);
                 in[I3(i,j,k)] = (double) triple_sine_waves(x, y, z);
                 
-                // printf("(x,y,z) = (%.2f,%.2f,%.2f) ", x, y, z);
                 // printf("in[I3(%d,%d,%d)] = in[%d] = %f\n", i, j, k, I3(i,j,k), (double) trivariate_normal_distribution(x, y, z));
             }
         }
@@ -93,7 +92,7 @@ void main(int argc, char* argv[]) {
     gettimeofday (&t2, NULL);
     printf("(t=%ld us)\n", ((t2.tv_sec - t1.tv_sec) * 1000000L + t2.tv_usec) - t1.tv_usec);
 
-    printf("Saving in array to in.dat... ");
+    printf("Saving input array to in.dat... ");
     gettimeofday (&t1, NULL);
 
     FILE *f_in = fopen("in.dat", "wb");
@@ -122,6 +121,9 @@ void main(int argc, char* argv[]) {
     gettimeofday (&t2, NULL);
     printf("(t=%ld us)\n", ((t2.tv_sec - t1.tv_sec) * 1000000L + t2.tv_usec) - t1.tv_usec);
 
+    printf("Saving output array to out.dat... ");
+    gettimeofday (&t1, NULL);
+
     FILE *f_out = fopen("out.dat", "wb");
     fwrite(out, sizeof(double), Nx*Ny*Nz, f_out);
     fclose(f_out);
@@ -145,6 +147,9 @@ void main(int argc, char* argv[]) {
 
     gettimeofday (&t2, NULL);
     printf("(t=%ld us)\n", ((t2.tv_sec - t1.tv_sec) * 1000000L + t2.tv_usec) - t1.tv_usec);
+
+    printf("Saving reconstructed array to rec.dat... ");
+    gettimeofday (&t1, NULL);
 
     FILE *f_rec = fopen("rec.dat", "wb");
     fwrite(rec, sizeof(double), Nx*Ny*Nz, f_rec);
