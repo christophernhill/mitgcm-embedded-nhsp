@@ -20,20 +20,23 @@
 * @return
 */
 double trivariate_normal_distribution(double x, double y, double z) {
-    static const double mu_x = 5;
-    static const double mu_y = 5;
-    static const double mu_z = 5;
+    static const double mu_x = 5.0;
+    static const double mu_y = 5.0;
+    static const double mu_z = 5.0;
 
-    static const double sigma_x = 1;
-    static const double sigma_y = 1;
-    static const double sigma_z = 1;
+    static const double sigma_x = 1.0;
+    static const double sigma_y = 1.0;
+    static const double sigma_z = 1.0;
 
-    double prefactor = 1 / (2 * PI * sigma_x * sigma_y * sigma_z);
+    // double prefactor = 1 / (2 * PI * sigma_x * sigma_y * sigma_z);
+    double prefactor = 100.0;
 
     double arg_x = - pow(x - mu_x, 2) / (2 * pow(sigma_x, 2));
     double arg_y = - pow(y - mu_y, 2) / (2 * pow(sigma_y, 2));
     double arg_z = - pow(z - mu_z, 2) / (2 * pow(sigma_z, 2));
     double arg = arg_x + arg_y + arg_z;
+
+    // printf("prefactor=%f, arg_x=%f, arg_y=%f, arg_z=%f, ret=%f\n", prefactor, arg_x, arg_y, arg_z, prefactor*exp(arg));
 
     return prefactor * exp(arg);
 }
@@ -42,14 +45,14 @@ void main(int argc, char* argv[]) {
     struct timeval t1, t2;
 
     // Number of gridpoints in each dimension.
-    static const int Nx = 16;
-    static const int Ny = 16;
-    static const int Nz = 16;
+    static const int Nx = 64;
+    static const int Ny = 64;
+    static const int Nz = 64;
 
     // Length of each dimension.
-    static const double Lx = 10;
-    static const double Ly = 10;
-    static const double Lz = 10;
+    static const double Lx = 10.0;
+    static const double Ly = 10.0;
+    static const double Lz = 10.0;
 
     printf("Number of gridpoints: (Nx,Ny,Nz) = (%d,%d,%d), Nx*Ny*Nz=%d\n", Nx, Ny, Nz, Nx*Ny*Nz);
     printf("Domain size: (Lx,Ly,Lz) = (%f,%f,%f)\n", Lx, Ly, Lz);
@@ -66,11 +69,14 @@ void main(int argc, char* argv[]) {
     for (int i = 0; i < Nx; i++) {
         for (int j = 0; j < Ny; j++) {
             for (int k = 0; k < Nz; k++) {
-                x = (i/Nx) * Lx;
-                y = (j/Ny) * Ly;
-                z = (k/Nz) * Lz;
+                x = ( (double) i/ (double) Nx) * Lx;
+                y = ( (double) j/ (double) Ny) * Ly;
+                z = ( (double) k/ (double) Nz) * Lz;
 
-                in[I3(i,j,k)] = trivariate_normal_distribution(x, y, z);
+                in[I3(i,j,k)] = (double) trivariate_normal_distribution(x, y, z);
+                
+                // printf("(x,y,z) = (%.2f,%.2f,%.2f) ", x, y, z);
+                // printf("in[I3(%d,%d,%d)] = in[%d] = %f\n", i, j, k, I3(i,j,k), (double) trivariate_normal_distribution(x, y, z));
             }
         }
     }
@@ -78,11 +84,15 @@ void main(int argc, char* argv[]) {
     gettimeofday (&t2, NULL);
     printf("(t=%ld us)\n", ((t2.tv_sec - t1.tv_sec) * 1000000L + t2.tv_usec) - t1.tv_usec);
 
-    printf("Saving in array... ");
+    printf("Saving in array to in.dat... ");
     gettimeofday (&t1, NULL);
-    
-    FILE *f = fopen("in.dat", "wb");
-    fwrite(clientdata, sizeof(char), sizeof(clientdata), f);
+
+    FILE *f_in = fopen("in.dat", "wb");
+    fwrite(in, sizeof(double), Nx*Ny*Nz, f_in);
+    fclose(f_in);
+
+    gettimeofday (&t2, NULL);
+    printf("(t=%ld us)\n", ((t2.tv_sec - t1.tv_sec) * 1000000L + t2.tv_usec) - t1.tv_usec);
 
     fftw_plan forward_plan, backward_plan;
 
@@ -103,6 +113,13 @@ void main(int argc, char* argv[]) {
     gettimeofday (&t2, NULL);
     printf("(t=%ld us)\n", ((t2.tv_sec - t1.tv_sec) * 1000000L + t2.tv_usec) - t1.tv_usec);
 
+    FILE *f_out = fopen("out.dat", "wb");
+    fwrite(out, sizeof(double), Nx*Ny*Nz, f_out);
+    fclose(f_out);
+
+    gettimeofday (&t2, NULL);
+    printf("(t=%ld us)\n", ((t2.tv_sec - t1.tv_sec) * 1000000L + t2.tv_usec) - t1.tv_usec);
+
     printf("Creating backward plan... ");
     gettimeofday (&t1, NULL);
 
@@ -116,6 +133,13 @@ void main(int argc, char* argv[]) {
     gettimeofday (&t1, NULL);
 
     fftw_execute(backward_plan);
+
+    gettimeofday (&t2, NULL);
+    printf("(t=%ld us)\n", ((t2.tv_sec - t1.tv_sec) * 1000000L + t2.tv_usec) - t1.tv_usec);
+
+    FILE *f_rec = fopen("rec.dat", "wb");
+    fwrite(rec, sizeof(double), Nx*Ny*Nz, f_rec);
+    fclose(f_rec);
 
     gettimeofday (&t2, NULL);
     printf("(t=%ld us)\n", ((t2.tv_sec - t1.tv_sec) * 1000000L + t2.tv_usec) - t1.tv_usec);
