@@ -41,12 +41,12 @@ double trivariate_normal_distribution(double x, double y, double z) {
     return prefactor * exp(arg);
 }
 
-double triple_sine_waves(double x, double y, double z) {
+double triple_cosine_waves(double x, double y, double z) {
     static const double k_x = 2*PI / 2.0;
-    static const double k_y = 2*PI / 5.0;
-    static const double k_z = 2*PI / 10.0;
+    static const double k_y = 2*PI / 2.0;
+    static const double k_z = 2*PI / 5.0;
 
-    return sin(k_x * x) * sin(k_y * y) * sin(k_z * z);
+    return cos(k_x * x) * cos(k_y * y) * sin(k_z * z);
 }
 
 void main(int argc, char* argv[]) {
@@ -82,7 +82,7 @@ void main(int argc, char* argv[]) {
                 z = ( (double) k/ (double) Nz) * Lz;
 
                 // in[I3(i,j,k)] = (double) trivariate_normal_distribution(x, y, z);
-                in[I3(i,j,k)] = (double) triple_sine_waves(x, y, z);
+                in[I3(i,j,k)] = (double) triple_cosine_waves(x, y, z);
                 
                 // printf("in[I3(%d,%d,%d)] = in[%d] = %f\n", i, j, k, I3(i,j,k), (double) trivariate_normal_distribution(x, y, z));
             }
@@ -108,7 +108,7 @@ void main(int argc, char* argv[]) {
     gettimeofday (&t1, NULL);
 
     forward_plan = fftw_plan_r2r_3d(Nx, Ny, Nz, in, out,
-        FFTW_FORWARD, FFTW_FORWARD, FFTW_FORWARD, FFTW_MEASURE);
+        FFTW_REDFT10, FFTW_REDFT10, FFTW_RODFT10, FFTW_MEASURE);
 
     gettimeofday (&t2, NULL);
     printf("(t=%ld us)\n", ((t2.tv_sec - t1.tv_sec) * 1000000L + t2.tv_usec) - t1.tv_usec);
@@ -135,7 +135,7 @@ void main(int argc, char* argv[]) {
     gettimeofday (&t1, NULL);
 
     backward_plan = fftw_plan_r2r_3d(Nx, Ny, Nz, out, rec,
-        FFTW_BACKWARD, FFTW_BACKWARD, FFTW_BACKWARD, FFTW_MEASURE);
+        FFTW_REDFT01, FFTW_REDFT01, FFTW_RODFT01, FFTW_MEASURE);
 
     gettimeofday (&t2, NULL);
     printf("(t=%ld us)\n", ((t2.tv_sec - t1.tv_sec) * 1000000L + t2.tv_usec) - t1.tv_usec);
