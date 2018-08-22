@@ -1,0 +1,8 @@
+# Ignoring binary data output.
+*.dat
+
+# Ignoring text output.
+*.log
+
+# Ignoring plotting outputs.
+*.png *.mp4
