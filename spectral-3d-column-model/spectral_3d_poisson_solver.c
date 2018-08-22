@@ -41,13 +41,21 @@ double trivariate_normal_distribution(double x, double y, double z) {
     return prefactor * exp(arg);
 }
 
+double triple_sine_waves(double x, double y, double z) {
+    static const double k_x = 2*PI / 1.0;
+    static const double k_y = 2*PI / 2.0;
+    static const double k_z = 2*PI / 5.0;
+
+    return sin(k_x * x) * sin(k_y * y) * sin(k_z * z);
+}
+
 void main(int argc, char* argv[]) {
     struct timeval t1, t2;
 
     // Number of gridpoints in each dimension.
-    static const int Nx = 64;
-    static const int Ny = 64;
-    static const int Nz = 64;
+    static const int Nx = 32;
+    static const int Ny = 32;
+    static const int Nz = 32;
 
     // Length of each dimension.
     static const double Lx = 10.0;
@@ -73,7 +81,8 @@ void main(int argc, char* argv[]) {
                 y = ( (double) j/ (double) Ny) * Ly;
                 z = ( (double) k/ (double) Nz) * Lz;
 
-                in[I3(i,j,k)] = (double) trivariate_normal_distribution(x, y, z);
+                // in[I3(i,j,k)] = (double) trivariate_normal_distribution(x, y, z);
+                in[I3(i,j,k)] = (double) triple_sine_waves(x, y, z);
                 
                 // printf("(x,y,z) = (%.2f,%.2f,%.2f) ", x, y, z);
                 // printf("in[I3(%d,%d,%d)] = in[%d] = %f\n", i, j, k, I3(i,j,k), (double) trivariate_normal_distribution(x, y, z));
