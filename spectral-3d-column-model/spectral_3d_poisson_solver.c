@@ -1,5 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
+#include <sys/time.h>
+
+#include <fftw3.h>
 
 /**
 * 
@@ -22,9 +26,11 @@
 *
 * Non-hydrostatic field:
 * @param phi_nh :: Non-hydrostatic potential (=NH-Pressure/rhoConst)
+* @param source_term :: The source term or "right hand side".
 *
 * Notes:
-*   - source_term is created with dimensions phi_nh(1-OLx:sNx+OLx, 1-OLy:sNy+OLy, Nr, nSx, nSy).
+*   - phi_nh_tiled and source_term_tiled are created with Fortran (column-major)
+*     dimensions (1-OLx:sNx+OLx, 1-OLy:sNy+OLy, Nr, nSx, nSy).
 */
 void spectral_3d_poisson_solver_(
     double* myTime_ptr, int* myIter_ptr, int* myThid_ptr,
@@ -73,7 +79,7 @@ void spectral_3d_poisson_solver_(
 
     int flat_idx = 0;
     for (; *phi_nh_tiled;) {
-        // Convert from a flat 1D index to the 5D index used for tiled MITGCM fields.
+        // Convert from a flat index to the 5 indices used for tiled MITGCM fields.
         int idx = flat_idx;
 
         int Sy_idx = idx / (Sx_idx_max * r_idx_max * y_idx_max * x_idx_max);
@@ -88,6 +94,7 @@ void spectral_3d_poisson_solver_(
         int y_idx = (idx / x_idx_max) - OLx;
         int x_idx = (idx % x_idx_max) - OLy;
 
+        // Convert from the 5 indices for tiled MITGCM fields to the 3 indices for global fields.
         int i = sNx*Sx_idx + x_idx;
         int j = sNy*Sy_idx + y_idx;
         int k = r_idx;
@@ -121,4 +128,23 @@ void spectral_3d_poisson_solver_(
     FILE *f_source_term = fopen(source_term_filename, "wb");
     fwrite(source_term_global, sizeof(double), Nx*Ny*Nr, f_source_term);
     fclose(f_source_term);
+
+    fftw_plan forward_plan, backward_plan;
+
+    double* source_term_hat_global = (double*) malloc(sizeof(double) * Nx*Ny*Nr);
+
+    printf("[F2C] Creating forward FFTW plan...\n");
+    forward_plan = fftw_plan_r2r_3d(Nx, Ny, Nr, source_term_global, source_term_hat_global,
+        FFTW_REDFT10, FFTW_REDFT10, FFTW_RODFT10, FFTW_MEASURE);
+
+    printf("[F2C] Executing forward FFTW plan...\n");
+    fftw_execute(forward_plan);
+
+    char source_term_hat_filename[30];
+    sprintf(source_term_hat_filename, "source_term_hat.%d.dat", myIter);
+
+    printf("[F2C] Saving %s...\n", source_term_hat_filename);
+    FILE *f_source_term_hat = fopen(source_term_hat_filename, "wb");
+    fwrite(source_term_hat_global, sizeof(double), Nx*Ny*Nr, f_source_term_hat);
+    fclose(f_source_term_hat);
 }
