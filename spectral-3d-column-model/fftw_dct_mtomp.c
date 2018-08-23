@@ -32,7 +32,7 @@
 #define NRANK 3
 #define I3(a,b,c) a+b*N+c*M*N
 
-main(int argc, char* argv[]) {
+void main(int argc, char* argv[]) {
     
     int i,j,k,ioff;
     double fac;
@@ -61,7 +61,7 @@ main(int argc, char* argv[]) {
         for (j = 0; j < M; ++j) {
             for (i = 0; i < N; ++i) {
                 ioff = I3(i,j,k);
-                inr[ioff]=0.;
+                inr[ioff] = 0.;
             }
         }
     }
@@ -158,5 +158,5 @@ main(int argc, char* argv[]) {
         }
     }
 
-    fftw_cleanup_threads();
+    fftw_cleanup_threads();    
 }

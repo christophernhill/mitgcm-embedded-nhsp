@@ -35,6 +35,16 @@
     -lfftw3_mpi -lfftw3
 */
 
+/*
+  Command line arguments:
+  ./fftw_dct_mpi_nd  Nx  Ny  Nr sNx sNy NT
+  Nx  - total size in X
+  Ny  - total size in Y
+  Nr  - total size in Z
+  sNx - tile size in X (must divide Nx exactly)
+  sNy - tile size in Y (must divide Ny exactly)
+  NT  - number of transforms
+*/
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -155,47 +165,47 @@ void glob2loc(int mpiRank,
               int nx, int ny, int nr, int snx, int sny, 
               int *il,  int *jl,  int *kl)
 {
- int ilog,  jlog, klog;
- int npx,   npy;
- int ioffl, joffl, koffl;
- int mypx,  mypy;
+  int ilog,  jlog, klog;
+  int npx,   npy;
+  int ioffl, joffl, koffl;
+  int mypx,  mypy;
 
- npx = nx / snx;
- npy = ny / sny;
- 
- mypx = mpiRank % npx;
- mypy = mpiRank / npx;
- 
- ilog = mypx * snx;
- jlog = mypy * sny;
- 
- ioffl = ig - ilog;
- joffl = jg - jlog;
- 
- if (ioffl >= 0 & ioffl < snx) {
-  *il = ioffl;
- } else {
-  *il = -1;
-  *jl = -1;
- }
+  npx = nx / snx;
+  npy = ny / sny;
 
- if (joffl >= 0 & joffl < sny) {
-  *jl = joffl;
- } else {
-  *il = -1;
-  *jl = -1;
- }
+  mypx = mpiRank % npx;
+  mypy = mpiRank / npx;
 
- klog = 0;
- koffl = kg - klog;
- *kl = koffl;
+  ilog = mypx * snx;
+  jlog = mypy * sny;
 
- // printf("GLOB2LOC: r, ig, jg, kg = %d, %d, %d, %d\n",mpiRank,ig,jg,kg);
- // printf("GLOB2LOC: r, ilog, jlog = %d, %d, %d    \n",mpiRank,ilog,jlog);
- // printf("GLOB2LOC: r, ioffl,joffl= %d, %d, %d    \n",mpiRank,ioffl,joffl);
- // printf("GLOB2LOC: r, il, jl, kl = %d, %d, %d, %d\n",mpiRank,*il,*jl,*kl);
+  ioffl = ig - ilog;
+  joffl = jg - jlog;
 
- return;
+  if (ioffl >= 0 & ioffl < snx) {
+    *il = ioffl;
+  } else {
+    *il = -1;
+    *jl = -1;
+  }
+
+  if (joffl >= 0 & joffl < sny) {
+    *jl = joffl;
+  } else {
+    *il = -1;
+    *jl = -1;
+  }
+
+  klog = 0;
+  koffl = kg - klog;
+  *kl = koffl;
+
+  // printf("GLOB2LOC: r, ig, jg, kg = %d, %d, %d, %d\n",mpiRank,ig,jg,kg);
+  // printf("GLOB2LOC: r, ilog, jlog = %d, %d, %d    \n",mpiRank,ilog,jlog);
+  // printf("GLOB2LOC: r, ioffl,joffl= %d, %d, %d    \n",mpiRank,ioffl,joffl);
+  // printf("GLOB2LOC: r, il, jl, kl = %d, %d, %d, %d\n",mpiRank,*il,*jl,*kl);
+
+  return;
 }
               
 
@@ -216,16 +226,7 @@ main(int argc, char *argv[])
   int mpiSize;
   int mpiComm;
 
-  // Read command line args
-  // ./a.out  Nx  Ny  Nr sNx sNy NT
-  //  Nx  - total size in X
-  //  Ny  - total size in Y
-  //  Nr  - total size in Z
-  //  sNx - tile size in X (must divide Nx exactly)
-  //  sNy - tile size in Y (must divide Ny exactly)
-  //  NT  - number of transforms
-  // ./a.out 192 192 150 36 36 100
-
+  // Parse command line arguments.
   if (argc != 7) {
    printf("ERROR: Not enough args set?\n");
    printf("Usage: %s Nx Ny Nr sNx sNy NT\n", argv[0]);
@@ -276,7 +277,7 @@ main(int argc, char *argv[])
     exit(-1);
   }
 
-  // Try DCT-II using FFTW REDFT10 _N interface and its inverse REDFT01. 
+  // Try DCT-II using FFTW REDFT10_N interface and its inverse REDFT01.
 
   MPI_Init(&argc, &argv);
   mpiComm = MPI_COMM_WORLD;
@@ -309,9 +310,9 @@ main(int argc, char *argv[])
     exit(-1);
   }
 
-  // Allocate local tile data array and scale factor array
   #define _I3LOC(a,b,c) a+(c*sNx)+(b*sNx*Nr)
-    
+
+  // Allocate local tile data array and scale factor array.
   double *mytData, *mytScale;
   double tr;
   int    sT, idl, jdl, kdl, idg, jdg, kdg;
