@@ -115,9 +115,11 @@ void spectral_3d_poisson_solver_(
         source_term_tiled++;
     }
 
-    char phi_nh_filename[30], source_term_filename[30];
+    char phi_nh_filename[30], source_term_filename[30], source_term_hat_filename[30], source_term_rec_filename[30];
     sprintf(phi_nh_filename, "phi_nh.%d.dat", myIter);
     sprintf(source_term_filename, "source_term.%d.dat", myIter);
+    sprintf(source_term_hat_filename, "source_term_hat.%d.dat", myIter);
+    sprintf(source_term_rec_filename, "source_term_rec.%d.dat", myIter);
 
     printf("[F2C] Saving %s...\n", phi_nh_filename);
     FILE *f_phi_nh = fopen(phi_nh_filename, "wb");
@@ -132,6 +134,7 @@ void spectral_3d_poisson_solver_(
     fftw_plan forward_plan, backward_plan;
 
     double* source_term_hat_global = (double*) malloc(sizeof(double) * Nx*Ny*Nr);
+    double* source_term_rec_global = (double*) malloc(sizeof(double) * Nx*Ny*Nr);
 
     printf("[F2C] Creating forward FFTW plan...\n");
     forward_plan = fftw_plan_r2r_3d(Nx, Ny, Nr, source_term_global, source_term_hat_global,
@@ -140,11 +143,30 @@ void spectral_3d_poisson_solver_(
     printf("[F2C] Executing forward FFTW plan...\n");
     fftw_execute(forward_plan);
 
-    char source_term_hat_filename[30];
-    sprintf(source_term_hat_filename, "source_term_hat.%d.dat", myIter);
-
     printf("[F2C] Saving %s...\n", source_term_hat_filename);
     FILE *f_source_term_hat = fopen(source_term_hat_filename, "wb");
     fwrite(source_term_hat_global, sizeof(double), Nx*Ny*Nr, f_source_term_hat);
     fclose(f_source_term_hat);
+
+    printf("[F2C] Creating backward FFTW plan...\n");
+    backward_plan = fftw_plan_r2r_3d(Nx, Ny, Nr, source_term_hat_global, source_term_rec_global,
+        FFTW_REDFT01, FFTW_REDFT01, FFTW_RODFT01, FFTW_MEASURE);
+
+    printf("[F2C] Executing backward FFTW plan...\n");
+    fftw_execute(backward_plan);
+
+    printf("[F2C] Saving %s...\n", source_term_rec_filename);
+    FILE *f_source_term_rec = fopen(source_term_rec_filename, "wb");
+    fwrite(source_term_rec_global, sizeof(double), Nx*Ny*Nr, f_source_term_rec);
+    fclose(f_source_term_rec);
+
+    fftw_destroy_plan(forward_plan);
+    fftw_destroy_plan(backward_plan);
+
+    fftw_cleanup();
+
+    free(phi_nh_global);
+    free(source_term_global);
+    free(source_term_hat_global);
+    free(source_term_rec_global);
 }

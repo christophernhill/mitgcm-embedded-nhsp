@@ -22,7 +22,7 @@ print('')
 
 fig, ax = plt.subplots()
 
-im = ax.imshow(a[0,:,:], vmin=-1e-4, vmax=1e-4, cmap='RdBu', animated=True)
+im = ax.imshow(a[0,:,:], vmin=-a.max()/10, vmax=a.max()/10, cmap='RdBu', animated=True)
 plt.colorbar(im)
 
 time_text = ax.text(0.02, 0.95, '', transform=ax.transAxes,
