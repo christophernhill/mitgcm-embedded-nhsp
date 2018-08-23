@@ -5,4 +5,5 @@
 *.log
 
 # Ignoring plotting outputs.
-*.png *.mp4
+*.png
+*.mp4
