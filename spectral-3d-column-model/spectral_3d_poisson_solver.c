@@ -91,31 +91,47 @@ void spectral_3d_poisson_solver_(
         int r_idx = idx / (y_idx_max * x_idx_max);
         idx -= r_idx * (y_idx_max * x_idx_max);
 
-        int y_idx = (idx / x_idx_max) - OLx;
-        int x_idx = (idx % x_idx_max) - OLy;
+        /* Convert from the 5 indices for tiled MITGCM fields to the 3 indices for global fields. */
 
-        // Convert from the 5 indices for tiled MITGCM fields to the 3 indices for global fields.
+        // i,j,k indices for fields where the overlapping tile region is filled in. (_ol ~ overlapping)
+        int y_idx = (idx / y_idx_max) - OLy;
+        int x_idx = (idx % x_idx_max) - OLx;
+
         int i = sNx*Sx_idx + x_idx;
         int j = sNy*Sy_idx + y_idx;
         int k = r_idx;
 
+        int idx_global = k*Nx*Ny + j*Nx + i;
+
         if (i >= 0 && i < Nx && j >= 0 && j < Ny) {
             // printf("[F2C] flat_idx=%d, i=%d, j=%d, k=%d, (k*Nx*Ny + j*Nx + i)=%d\n", flat_idx, i, j, k, k*Nx*Ny + j*Nx + i);
 
-            phi_nh_global[k*Nx*Ny + j*Nx + i]      = *phi_nh_tiled;
-            source_term_global[k*Nx*Ny + j*Nx + i] = *source_term_tiled;
+            phi_nh_global[idx_global] = *phi_nh_tiled;
 
             // printf("[F2C] phi_nh_tiled[%d] = phi_nh_tiled(x=%d/%d, y=%d/%d, r=%d/%d, Sx=%d/%d, Sy=%d/%d) = %g -> phi_nh_global[%d,%d,%d]\n", flat_idx,
             //     x_idx+1, x_idx_max - 2*OLx, y_idx+1, y_idx_max - 2*OLy, r_idx+1, r_idx_max,
             //     Sx_idx+1, Sx_idx_max, Sy_idx+1, Sy_idx_max, *phi_nh_tiled, i, j, k);
         }
-        
+
+        int y_idx_nol = (idx / y_idx_max);
+        int x_idx_nol = (idx % x_idx_max);
+
+        int i_nol = sNx*Sx_idx + (idx % x_idx_max);
+        int j_nol = sNy*Sy_idx + (idx / y_idx_max);
+        int k_nol = r_idx;
+
+        int idx_flat_nol = k_nol*Nx*Ny + j_nol*Nx + i_nol;
+
+        if (i >= 0 && x_idx >= 0 && x_idx < sNx && i < Nx && j >= 0 && y_idx >= 0 && y_idx < sNy && j < Ny) {
+            source_term_global[idx_global] = *source_term_tiled;
+        }
+
         flat_idx++;
         phi_nh_tiled++;
         source_term_tiled++;
     }
 
-    char phi_nh_filename[30], source_term_filename[30], source_term_hat_filename[30], source_term_rec_filename[30];
+    char phi_nh_filename[50], source_term_filename[50], source_term_hat_filename[50], source_term_rec_filename[50];
     sprintf(phi_nh_filename, "phi_nh.%d.dat", myIter);
     sprintf(source_term_filename, "source_term.%d.dat", myIter);
     sprintf(source_term_hat_filename, "source_term_hat.%d.dat", myIter);
