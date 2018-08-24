@@ -5,6 +5,8 @@
 
 #include <fftw3.h>
 
+#define PI 3.14159265358979323846
+
 /**
 * 
 * @param myTime :: Current time in simulation
@@ -94,6 +96,7 @@ void spectral_3d_poisson_solver_(
         int r_idx = idx / (y_idx_max * x_idx_max);
         idx -= r_idx * (y_idx_max * x_idx_max);
 
+        // TODO: Does this work when x_idx_max != y_idx_max?
         int y_idx = (idx / y_idx_max) - OLy;
         int x_idx = (idx % x_idx_max) - OLx;
 
@@ -127,8 +130,12 @@ void spectral_3d_poisson_solver_(
     }
 
     // Create filenames for all the fields we're saving to disk.
-    char phi_nh_filename[50], source_term_filename[50], source_term_hat_filename[50], source_term_rec_filename[50];
+    char phi_nh_filename[50], phi_nh_hat_filename[50], phi_nh_rec_filename[50];
+    char source_term_filename[50], source_term_hat_filename[50], source_term_rec_filename[50];
+
     sprintf(phi_nh_filename, "phi_nh.%d.dat", myIter);
+    sprintf(phi_nh_hat_filename, "phi_nh_hat.%d.dat", myIter);
+    sprintf(phi_nh_rec_filename, "phi_nh_rec.%d.dat", myIter);
     sprintf(source_term_filename, "source_term.%d.dat", myIter);
     sprintf(source_term_hat_filename, "source_term_hat.%d.dat", myIter);
     sprintf(source_term_rec_filename, "source_term_rec.%d.dat", myIter);
@@ -143,7 +150,8 @@ void spectral_3d_poisson_solver_(
     fwrite(source_term_global, sizeof(double), Nx*Ny*Nr, f_source_term);
     fclose(f_source_term);
 
-    fftw_plan forward_plan, backward_plan;
+    fftw_plan forward_source_term_plan, backward_source_term_plan;
+    fftw_plan backward_phi_nh_plan;
 
     /* source_term_hat_global is the (DCT/DST mixed) Fourier transform of source_term while
      * source_term_rec_global is the reconstruction of source_term_global from the Fourier
@@ -152,33 +160,94 @@ void spectral_3d_poisson_solver_(
      */
     double* source_term_hat_global = (double*) malloc(sizeof(double) * Nx*Ny*Nr);
     double* source_term_rec_global = (double*) malloc(sizeof(double) * Nx*Ny*Nr);
+    double* phi_nh_hat_global      = (double*) malloc(sizeof(double) * Nx*Ny*Nr);
+    double* phi_nh_rec_global      = (double*) malloc(sizeof(double) * Nx*Ny*Nr);
 
-    printf("[F2C] Creating forward FFTW plan...\n");
-    forward_plan = fftw_plan_r2r_3d(Nx, Ny, Nr, source_term_global, source_term_hat_global,
+    printf("[F2C] Creating forward source term FFTW plan...\n");
+    forward_source_term_plan = fftw_plan_r2r_3d(Nx, Ny, Nr, source_term_global, source_term_hat_global,
         FFTW_REDFT10, FFTW_REDFT10, FFTW_RODFT10, FFTW_MEASURE);
 
-    printf("[F2C] Executing forward FFTW plan...\n");
-    fftw_execute(forward_plan);
+    printf("[F2C] Executing forward source term FFTW plan...\n");
+    fftw_execute(forward_source_term_plan);
 
     printf("[F2C] Saving %s...\n", source_term_hat_filename);
     FILE *f_source_term_hat = fopen(source_term_hat_filename, "wb");
     fwrite(source_term_hat_global, sizeof(double), Nx*Ny*Nr, f_source_term_hat);
     fclose(f_source_term_hat);
 
-    printf("[F2C] Creating backward FFTW plan...\n");
-    backward_plan = fftw_plan_r2r_3d(Nx, Ny, Nr, source_term_hat_global, source_term_rec_global,
+    printf("[F2C] Creating backward source term FFTW plan...\n");
+    backward_source_term_plan = fftw_plan_r2r_3d(Nx, Ny, Nr, source_term_hat_global, source_term_rec_global,
         FFTW_REDFT01, FFTW_REDFT01, FFTW_RODFT01, FFTW_MEASURE);
 
-    printf("[F2C] Executing backward FFTW plan...\n");
-    fftw_execute(backward_plan);
+    printf("[F2C] Executing backward source term FFTW plan...\n");
+    fftw_execute(backward_source_term_plan);
+
+    /* FFTW employs an unnormalized IFFT, so if we want to get back the original field we need
+     * to divide the coefficients by 2N for each dimension, or 8*Nx*Ny*Nz in our case.
+     */
+    int fc; // Fourier coefficient counter.
+    for (fc = 0; fc < Nx*Ny*Nr; fc++)
+        source_term_rec_global[fc] /= 8.0*Nx*Ny*Nr;
 
     printf("[F2C] Saving %s...\n", source_term_rec_filename);
     FILE *f_source_term_rec = fopen(source_term_rec_filename, "wb");
     fwrite(source_term_rec_global, sizeof(double), Nx*Ny*Nr, f_source_term_rec);
     fclose(f_source_term_rec);
 
-    fftw_destroy_plan(forward_plan);
-    fftw_destroy_plan(backward_plan);
+    // TODO: These are hard-coded for now but I should pass the domain size too.
+    int delta_x = 2000 / Nx;
+    int delta_y = 2000 / Ny;
+    int delta_r = 1000 / Nr;
+
+    printf("[F2C] Computing phi_nh Fourier coefficients...\n");
+
+    for (fc = 0; fc < Nx*Ny*Nr; fc++) {
+        int idx = fc;
+
+        // Convert flat Fourier coefficient index to (l,m,n) wavenumber indices.
+        int n = idx / (Nx*Ny);
+        idx -= n * (Nx*Ny);
+
+        // TODO: Does this work when Nx != Ny?
+        int m = (idx / Ny);
+        int l = (idx % Nx);
+
+        double kx = (2 / pow(delta_x, 2)) * (cos( (PI*l) / Nx) - 1);
+        double ky = (2 / pow(delta_y, 2)) * (cos( (PI*m) / Ny) - 1);
+        double kr = (2 / pow(delta_r, 2)) * (cos( (PI*n) / Nr) - 1);
+        
+        double factor = 1 / (kx + ky + kr);
+
+        if (isinf(factor)) {
+            phi_nh_hat_global[fc] = 0;
+        } else {
+            phi_nh_hat_global[fc] = factor * source_term_hat_global[fc];
+        }
+    }
+
+    printf("[F2C] Saving %s...\n", phi_nh_hat_filename);
+    FILE *f_phi_nh_hat = fopen(phi_nh_hat_filename, "wb");
+    fwrite(phi_nh_hat_global, sizeof(double), Nx*Ny*Nr, f_phi_nh_hat);
+    fclose(f_phi_nh_hat);
+
+    printf("[F2C] Creating backward phi_nh FFTW plan...\n");
+    backward_phi_nh_plan = fftw_plan_r2r_3d(Nx, Ny, Nr, phi_nh_hat_global, phi_nh_rec_global,
+        FFTW_REDFT01, FFTW_REDFT01, FFTW_RODFT01, FFTW_MEASURE);
+
+    printf("[F2C] Executing backward phi_nh FFTW plan...\n");
+    fftw_execute(backward_phi_nh_plan);
+
+    for (fc = 0; fc < Nx*Ny*Nr; fc++)
+        phi_nh_rec_global[fc] /= 8.0*Nx*Ny*Nr;
+
+    printf("[F2C] Saving %s...\n", phi_nh_rec_filename);
+    FILE *f_phi_nh_rec = fopen(phi_nh_rec_filename, "wb");
+    fwrite(phi_nh_rec_global, sizeof(double), Nx*Ny*Nr, f_phi_nh_rec);
+    fclose(f_phi_nh_rec);
+
+    fftw_destroy_plan(forward_source_term_plan);
+    fftw_destroy_plan(backward_source_term_plan);
+    fftw_destroy_plan(backward_phi_nh_plan);
 
     fftw_cleanup();
 
@@ -186,4 +255,6 @@ void spectral_3d_poisson_solver_(
     free(source_term_global);
     free(source_term_hat_global);
     free(source_term_rec_global);
+    free(phi_nh_hat_global);
+    free(phi_nh_rec_global);
 }
