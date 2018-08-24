@@ -40,6 +40,8 @@ void spectral_3d_poisson_solver_(
     int* nPx_ptr, int* nPy_ptr, int* Nx_ptr, int* Ny_ptr, int* Nr_ptr,
     double* phi_nh_tiled, double* source_term_tiled)
 {
+    struct timeval t1, t2; // For timing crucial sections of code.
+
     double myTime = *myTime_ptr;
     int myIter = *myIter_ptr;
     int myThid = *myThid_ptr;
@@ -166,10 +168,14 @@ void spectral_3d_poisson_solver_(
     printf("[F2C] Creating forward source term FFTW plan...\n");
     forward_source_term_plan = fftw_plan_r2r_3d(Nx, Ny, Nr, source_term_global, source_term_hat_global,
         FFTW_REDFT10, FFTW_REDFT10, FFTW_RODFT10, FFTW_MEASURE);
+    gettimeofday(&t1, NULL); // Start timing: source term FFT
 
-    printf("[F2C] Executing forward source term FFTW plan...\n");
+    printf("[F2C] Executing forward source term FFTW plan... ");
     fftw_execute(forward_source_term_plan);
 
+    // Stop timing: source term FFT
+    gettimeofday (&t2, NULL);
+    printf("(t=%ld us)\n", ((t2.tv_sec - t1.tv_sec) * 1000000L + t2.tv_usec) - t1.tv_usec);
     printf("[F2C] Saving %s...\n", source_term_hat_filename);
     FILE *f_source_term_hat = fopen(source_term_hat_filename, "wb");
     fwrite(source_term_hat_global, sizeof(double), Nx*Ny*Nr, f_source_term_hat);
@@ -199,7 +205,9 @@ void spectral_3d_poisson_solver_(
     int delta_y = 2000 / Ny;
     int delta_r = 1000 / Nr;
 
-    printf("[F2C] Computing phi_nh Fourier coefficients...\n");
+    gettimeofday(&t1, NULL); // Start timing: Fourier coefficient computation
+
+    printf("[F2C] Computing phi_nh Fourier coefficients... ");
 
     for (fc = 0; fc < Nx*Ny*Nr; fc++) {
         int idx = fc;
@@ -225,6 +233,10 @@ void spectral_3d_poisson_solver_(
         }
     }
 
+    // Stop timing: Fourier coefficient computation
+    gettimeofday (&t2, NULL);
+    printf("(t=%ld us)\n", ((t2.tv_sec - t1.tv_sec) * 1000000L + t2.tv_usec) - t1.tv_usec);
+
     printf("[F2C] Saving %s...\n", phi_nh_hat_filename);
     FILE *f_phi_nh_hat = fopen(phi_nh_hat_filename, "wb");
     fwrite(phi_nh_hat_global, sizeof(double), Nx*Ny*Nr, f_phi_nh_hat);
@@ -233,12 +245,17 @@ void spectral_3d_poisson_solver_(
     printf("[F2C] Creating backward phi_nh FFTW plan...\n");
     backward_phi_nh_plan = fftw_plan_r2r_3d(Nx, Ny, Nr, phi_nh_hat_global, phi_nh_rec_global,
         FFTW_REDFT01, FFTW_REDFT01, FFTW_RODFT01, FFTW_MEASURE);
+    gettimeofday(&t1, NULL); // Start timing: phi_nh IFFT
 
-    printf("[F2C] Executing backward phi_nh FFTW plan...\n");
+    printf("[F2C] Executing backward phi_nh FFTW plan... ");
     fftw_execute(backward_phi_nh_plan);
 
     for (fc = 0; fc < Nx*Ny*Nr; fc++)
         phi_nh_rec_global[fc] /= 8.0*Nx*Ny*Nr;
+
+    // Stop timing: phi_nh IFFT
+    gettimeofday (&t2, NULL);
+    printf("(t=%ld us)\n", ((t2.tv_sec - t1.tv_sec) * 1000000L + t2.tv_usec) - t1.tv_usec);
 
     printf("[F2C] Saving %s...\n", phi_nh_rec_filename);
     FILE *f_phi_nh_rec = fopen(phi_nh_rec_filename, "wb");
