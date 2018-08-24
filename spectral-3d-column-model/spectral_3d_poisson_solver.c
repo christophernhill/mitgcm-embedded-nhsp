@@ -26,7 +26,7 @@
 *
 * Non-hydrostatic field:
 * @param phi_nh :: Non-hydrostatic potential (=NH-Pressure/rhoConst)
-* @param source_term :: The source term or "right hand side".
+* @param source_term :: The source term or "right hand side". Called cg3d_b in solve_for_pressure.f.
 *
 * Notes:
 *   - phi_nh_tiled and source_term_tiled are created with Fortran (column-major)
@@ -74,13 +74,16 @@ void spectral_3d_poisson_solver_(
     double* phi_nh_global      = (double*) malloc(sizeof(double) * Nx*Ny*Nr);
     double* source_term_global = (double*) malloc(sizeof(double) * Nx*Ny*Nr);
 
-    // Convert from 5D tiled coordinates (x,y,r,Sx,Sy) to 3D global coordinates (x,y,r).
+    /* The following loop converts from 5D tiled coordinates (x,y,r,Sx,Sy) to 3D global coordinates (x,y,r)
+     * and populates global versions of the fields allocated above.
+     */
     printf("[F2C] Converting 5D (tiled) arrays to 3D (global) arrays...\n");
 
     int flat_idx = 0;
     for (; *phi_nh_tiled;) {
-        // Convert from a flat index to the 5 indices used for tiled MITGCM fields.
-        int idx = flat_idx;
+        /* Convert from a flat index to the 5 indices used for tiled MITGCM fields. */
+        
+        int idx = flat_idx; // Mutable copy of flat_idx we can use to calculate the 5 indices.
 
         int Sy_idx = idx / (Sx_idx_max * r_idx_max * y_idx_max * x_idx_max);
         idx -= Sy_idx * (Sx_idx_max * r_idx_max * y_idx_max * x_idx_max);
@@ -91,38 +94,30 @@ void spectral_3d_poisson_solver_(
         int r_idx = idx / (y_idx_max * x_idx_max);
         idx -= r_idx * (y_idx_max * x_idx_max);
 
-        /* Convert from the 5 indices for tiled MITGCM fields to the 3 indices for global fields. */
-
-        // i,j,k indices for fields where the overlapping tile region is filled in. (_ol ~ overlapping)
         int y_idx = (idx / y_idx_max) - OLy;
         int x_idx = (idx % x_idx_max) - OLx;
 
+        /* Convert from the 5 indices for tiled MITGCM fields to the 3 indices for global fields. */
         int i = sNx*Sx_idx + x_idx;
         int j = sNy*Sy_idx + y_idx;
         int k = r_idx;
 
-        int idx_global = k*Nx*Ny + j*Nx + i;
+        int idx_global = k*Nx*Ny + j*Nx + i; // This flat index is correspond to [k][j][i] for global fields.
 
+        /* For tiled fields where the overlapping regions are filled in (e.g. phi_nh) we just make sure that (i,j)
+         * is within the global domain (0 <= i < Nx, 0 <= j < Ny). Grid points inside the overlapping regions will
+         * written to more than once but it's such a small inefficiency it's not worth worrying about.
+         */
         if (i >= 0 && i < Nx && j >= 0 && j < Ny) {
-            // printf("[F2C] flat_idx=%d, i=%d, j=%d, k=%d, (k*Nx*Ny + j*Nx + i)=%d\n", flat_idx, i, j, k, k*Nx*Ny + j*Nx + i);
-
             phi_nh_global[idx_global] = *phi_nh_tiled;
-
-            // printf("[F2C] phi_nh_tiled[%d] = phi_nh_tiled(x=%d/%d, y=%d/%d, r=%d/%d, Sx=%d/%d, Sy=%d/%d) = %g -> phi_nh_global[%d,%d,%d]\n", flat_idx,
-            //     x_idx+1, x_idx_max - 2*OLx, y_idx+1, y_idx_max - 2*OLy, r_idx+1, r_idx_max,
-            //     Sx_idx+1, Sx_idx_max, Sy_idx+1, Sy_idx_max, *phi_nh_tiled, i, j, k);
         }
 
-        int y_idx_nol = (idx / y_idx_max);
-        int x_idx_nol = (idx % x_idx_max);
-
-        int i_nol = sNx*Sx_idx + (idx % x_idx_max);
-        int j_nol = sNy*Sy_idx + (idx / y_idx_max);
-        int k_nol = r_idx;
-
-        int idx_flat_nol = k_nol*Nx*Ny + j_nol*Nx + i_nol;
-
-        if (i >= 0 && x_idx >= 0 && x_idx < sNx && i < Nx && j >= 0 && y_idx >= 0 && y_idx < sNy && j < Ny) {
+        /* For tiled fields where the overlapping regions are "not filled in" (e.g. source_term = cg3d_b) where they're
+         * filled with zeros we just make sure that (i,j) is both within the global domain (0 <= i < Nx, 0 <= j < Ny)
+         * and within a tile (0 <= x_idx < sNx, 0 <= y_idx < sNy).
+         */
+        if (i >= 0 && i < Nx && j >= 0 && j < Ny &&
+            x_idx >= 0 && x_idx < sNx && y_idx >= 0 && y_idx < sNy) {
             source_term_global[idx_global] = *source_term_tiled;
         }
 
@@ -131,6 +126,7 @@ void spectral_3d_poisson_solver_(
         source_term_tiled++;
     }
 
+    // Create filenames for all the fields we're saving to disk.
     char phi_nh_filename[50], source_term_filename[50], source_term_hat_filename[50], source_term_rec_filename[50];
     sprintf(phi_nh_filename, "phi_nh.%d.dat", myIter);
     sprintf(source_term_filename, "source_term.%d.dat", myIter);
@@ -149,6 +145,11 @@ void spectral_3d_poisson_solver_(
 
     fftw_plan forward_plan, backward_plan;
 
+    /* source_term_hat_global is the (DCT/DST mixed) Fourier transform of source_term while
+     * source_term_rec_global is the reconstruction of source_term_global from the Fourier
+     * coefficients which we save to make sure that the forward and inverse transforms are
+     * doing their job.
+     */
     double* source_term_hat_global = (double*) malloc(sizeof(double) * Nx*Ny*Nr);
     double* source_term_rec_global = (double*) malloc(sizeof(double) * Nx*Ny*Nr);
 
