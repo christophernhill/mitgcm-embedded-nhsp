@@ -166,8 +166,9 @@ void spectral_3d_poisson_solver_(
     double* phi_nh_rec_global      = (double*) malloc(sizeof(double) * Nx*Ny*Nr);
 
     printf("[F2C] Creating forward source term FFTW plan...\n");
-    forward_source_term_plan = fftw_plan_r2r_3d(Nx, Ny, Nr, source_term_global, source_term_hat_global,
-        FFTW_REDFT10, FFTW_REDFT10, FFTW_RODFT10, FFTW_MEASURE);
+    forward_source_term_plan = fftw_plan_r2r_3d(Nr, Ny, Nx, source_term_global, source_term_hat_global,
+        FFTW_RODFT10, FFTW_REDFT10, FFTW_REDFT10, FFTW_MEASURE);
+
     gettimeofday(&t1, NULL); // Start timing: source term FFT
 
     printf("[F2C] Executing forward source term FFTW plan... ");
@@ -176,14 +177,15 @@ void spectral_3d_poisson_solver_(
     // Stop timing: source term FFT
     gettimeofday (&t2, NULL);
     printf("(t=%ld us)\n", ((t2.tv_sec - t1.tv_sec) * 1000000L + t2.tv_usec) - t1.tv_usec);
+
     printf("[F2C] Saving %s...\n", source_term_hat_filename);
     FILE *f_source_term_hat = fopen(source_term_hat_filename, "wb");
     fwrite(source_term_hat_global, sizeof(double), Nx*Ny*Nr, f_source_term_hat);
     fclose(f_source_term_hat);
 
     printf("[F2C] Creating backward source term FFTW plan...\n");
-    backward_source_term_plan = fftw_plan_r2r_3d(Nx, Ny, Nr, source_term_hat_global, source_term_rec_global,
-        FFTW_REDFT01, FFTW_REDFT01, FFTW_RODFT01, FFTW_MEASURE);
+    backward_source_term_plan = fftw_plan_r2r_3d(Nr, Ny, Nx, source_term_hat_global, source_term_rec_global,
+        FFTW_RODFT01, FFTW_REDFT01, FFTW_REDFT01, FFTW_MEASURE);
 
     printf("[F2C] Executing backward source term FFTW plan...\n");
     fftw_execute(backward_source_term_plan);
@@ -226,8 +228,9 @@ void spectral_3d_poisson_solver_(
         
         double factor = 1 / (kx + ky + kr);
 
+        // TODO: What to do if kx + ky + kz == 0?
         if (isinf(factor)) {
-            phi_nh_hat_global[fc] = 0;
+            phi_nh_hat_global[fc] = 4e6; // 4e6 is a bit higher than the second strongest signal.
         } else {
             phi_nh_hat_global[fc] = factor * source_term_hat_global[fc];
         }
@@ -243,8 +246,9 @@ void spectral_3d_poisson_solver_(
     fclose(f_phi_nh_hat);
 
     printf("[F2C] Creating backward phi_nh FFTW plan...\n");
-    backward_phi_nh_plan = fftw_plan_r2r_3d(Nx, Ny, Nr, phi_nh_hat_global, phi_nh_rec_global,
-        FFTW_REDFT01, FFTW_REDFT01, FFTW_RODFT01, FFTW_MEASURE);
+    backward_phi_nh_plan = fftw_plan_r2r_3d(Nr, Ny, Nx, phi_nh_hat_global, phi_nh_rec_global,
+        FFTW_RODFT01, FFTW_REDFT01, FFTW_REDFT01, FFTW_MEASURE);
+
     gettimeofday(&t1, NULL); // Start timing: phi_nh IFFT
 
     printf("[F2C] Executing backward phi_nh FFTW plan... ");
