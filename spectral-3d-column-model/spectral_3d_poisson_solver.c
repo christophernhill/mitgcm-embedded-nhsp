@@ -71,9 +71,10 @@ void spectral_3d_poisson_solver_(
     int r_idx_max = Nr;
     int y_idx_max = sNy + 2*OLy;
     int x_idx_max = sNx + 2*OLx;
+    int flat_idx_max = x_idx_max * y_idx_max * r_idx_max * Sx_idx_max * Sy_idx_max;
 
-    printf("[F2C] Sy_idx_max=%d, Sx_idx_max=%d, r_idx_max=%d, y_idx_max=%d, x_idx_max=%d\n",
-        Sy_idx_max, Sx_idx_max, r_idx_max, y_idx_max, x_idx_max);
+    printf("[F2C] Sy_idx_max=%d, Sx_idx_max=%d, r_idx_max=%d, y_idx_max=%d, x_idx_max=%d, flat_idx_max=%d\n",
+        Sy_idx_max, Sx_idx_max, r_idx_max, y_idx_max, x_idx_max, flat_idx_max);
 
     double* phi_nh_global      = (double*) malloc(sizeof(double) * Nx*Ny*Nr);
     double* source_term_global = (double*) malloc(sizeof(double) * Nx*Ny*Nr);
@@ -84,7 +85,7 @@ void spectral_3d_poisson_solver_(
     printf("[F2C] Converting 5D (tiled) arrays to 3D (global) arrays...\n");
 
     int flat_idx = 0;
-    for (; *phi_nh_tiled;) {
+    for (; flat_idx < flat_idx_max;) {
         /* Convert from a flat index to the 5 indices used for tiled MITGCM fields. */
         
         int idx = flat_idx; // Mutable copy of flat_idx we can use to calculate the 5 indices.
@@ -124,12 +125,23 @@ void spectral_3d_poisson_solver_(
         if (i >= 0 && i < Nx && j >= 0 && j < Ny &&
             x_idx >= 0 && x_idx < sNx && y_idx >= 0 && y_idx < sNy) {
             source_term_global[idx_global] = *source_term_tiled;
+
+            if (idx_global == 0)
+                printf("[F2C] loop: source_term_global[0]=%+e\n", source_term_global[0]);
+            if (idx_global == 100)
+                printf("[F2C] loop: source_term_global[100]=%+e\n", source_term_global[100]);
+            if (idx_global == 250000)
+                printf("[F2C] loop: source_term_global[250000]=%+e\n", source_term_global[250000]);
         }
 
         flat_idx++;
         phi_nh_tiled++;
         source_term_tiled++;
     }
+
+    printf("[F2C] after: source_term_global[0]=%+e\n", source_term_global[0]);
+    printf("[F2C] after: source_term_global[100]=%+e\n", source_term_global[100]);
+    printf("[F2C] after: source_term_global[250000]=%+e\n", source_term_global[250000]);
 
     // Create filenames for all the fields we're saving to disk.
     char phi_nh_filename[50], phi_nh_hat_filename[50], phi_nh_rec_filename[50];
