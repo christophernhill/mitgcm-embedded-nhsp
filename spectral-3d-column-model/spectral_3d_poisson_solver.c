@@ -278,6 +278,8 @@ void spectral_3d_poisson_solver_(
     fwrite(phi_nh_rec_global, sizeof(double), Nx*Ny*Nr, f_phi_nh_rec);
     fclose(f_phi_nh_rec);
 
+    fflush(stdout); // Make sure to flush stdout buffer so C output doesn't appear in the wrong order.
+
     fftw_destroy_plan(forward_source_term_plan);
     fftw_destroy_plan(backward_source_term_plan);
     fftw_destroy_plan(backward_phi_nh_plan);
