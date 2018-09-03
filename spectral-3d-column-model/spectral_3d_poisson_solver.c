@@ -242,7 +242,7 @@ void spectral_3d_poisson_solver_(
 
         // TODO: What to do if kx + ky + kz == 0?
         if (isinf(factor)) {
-            phi_nh_hat_global[fc] = 4e6; // 4e6 is a bit higher than the second strongest signal.
+            phi_nh_hat_global[fc] = 0.0; // Assuming solvability condition that DC component is zero.
         } else {
             phi_nh_hat_global[fc] = factor * source_term_hat_global[fc];
         }
