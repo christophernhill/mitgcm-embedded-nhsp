@@ -179,7 +179,7 @@ void spectral_3d_poisson_solver_(
 
     printf("[F2C] Creating forward source term FFTW plan...\n");
     forward_source_term_plan = fftw_plan_r2r_3d(Nr, Ny, Nx, source_term_global, source_term_hat_global,
-        FFTW_RODFT10, FFTW_REDFT10, FFTW_REDFT10, FFTW_MEASURE);
+        FFTW_REDFT10, FFTW_REDFT10, FFTW_REDFT10, FFTW_MEASURE);
 
     gettimeofday(&t1, NULL); // Start timing: source term FFT
 
@@ -259,7 +259,7 @@ void spectral_3d_poisson_solver_(
 
     printf("[F2C] Creating backward phi_nh FFTW plan...\n");
     backward_phi_nh_plan = fftw_plan_r2r_3d(Nr, Ny, Nx, phi_nh_hat_global, phi_nh_rec_global,
-        FFTW_RODFT01, FFTW_REDFT01, FFTW_REDFT01, FFTW_MEASURE);
+        FFTW_REDFT01, FFTW_REDFT01, FFTW_REDFT01, FFTW_MEASURE);
 
     gettimeofday(&t1, NULL); // Start timing: phi_nh IFFT
 
