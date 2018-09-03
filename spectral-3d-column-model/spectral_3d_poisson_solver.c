@@ -251,11 +251,11 @@ void spectral_3d_poisson_solver_(
         int m = (idx / Ny);
         int l = (idx % Nx);
 
-        double kx = (2 / pow(delta_x, 2)) * (cos( (PI*l) / Nx) - 1);
-        double ky = (2 / pow(delta_y, 2)) * (cos( (PI*m) / Ny) - 1);
-        double kr = (2 / pow(delta_r, 2)) * (cos( (PI*n) / Nr) - 1);
+        double kx = (2.0 / pow(delta_x, 2)) * (cos( (PI*l) / Nx) - 1.0);
+        double ky = (2.0 / pow(delta_y, 2)) * (cos( (PI*m) / Ny) - 1.0);
+        double kr = (2.0 / pow(delta_r, 2)) * (cos( (PI*n) / Nr) - 1.0);
         
-        double factor = 1 / (kx + ky + kr);
+        double factor = 1.0 / (kx + ky + kr); // TODO: Should there be a minus sign here?
 
         // TODO: What to do if kx + ky + kz == 0?
         if (isinf(factor)) {
