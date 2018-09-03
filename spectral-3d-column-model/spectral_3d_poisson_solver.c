@@ -58,6 +58,10 @@ void spectral_3d_poisson_solver_(
     int Ny  = *Ny_ptr;
     int Nr  = *Nr_ptr;
 
+    double cg3dNorm = 5e-2;
+    double rhsMax   = 0.0;
+    double rhsNorm  = 0.0;
+
     printf("[F2C] C function spectral_3d_poisson_solver_ called from Fortran77 SOLVE_FOR_PRESSURE.\n");
     printf("[F2C] myTime=%f, myIter=%d, myThid=%d\n", myTime, myIter, myThid);
     printf("[F2C] Total number of points: Nx=%d, Ny=%d, Nr=%d\n", Nx, Ny, Nr);
@@ -126,6 +130,11 @@ void spectral_3d_poisson_solver_(
             x_idx >= 0 && x_idx < sNx && y_idx >= 0 && y_idx < sNy) {
             source_term_global[idx_global] = *source_term_tiled;
 
+            if (fabs(source_term_global[idx_global]) > rhsMax) {
+                rhsMax = fabs(source_term_global[idx_global]);
+                printf("[F2C] rhsMax=%+e\n", rhsMax);
+            }
+
             if (idx_global == 0)
                 printf("[F2C] loop: source_term_global[0]=%+e\n", source_term_global[0]);
             if (idx_global == 100)
@@ -142,6 +151,14 @@ void spectral_3d_poisson_solver_(
     printf("[F2C] after: source_term_global[0]=%+e\n", source_term_global[0]);
     printf("[F2C] after: source_term_global[100]=%+e\n", source_term_global[100]);
     printf("[F2C] after: source_term_global[250000]=%+e\n", source_term_global[250000]);
+
+    rhsNorm = 1 / rhsMax;
+
+    printf("[F2C] cg3dNorm=%+e, rhsNorm=%+e\n", cg3dNorm, rhsNorm);
+
+    int stc = 0; // source term counter
+    for (stc = 0; stc < Nx*Ny*Nr; stc++)
+        source_term_global[stc] *= (cg3dNorm * rhsNorm);
 
     // Create filenames for all the fields we're saving to disk.
     char phi_nh_filename[50], phi_nh_hat_filename[50], phi_nh_rec_filename[50];
@@ -267,7 +284,7 @@ void spectral_3d_poisson_solver_(
     fftw_execute(backward_phi_nh_plan);
 
     for (fc = 0; fc < Nx*Ny*Nr; fc++)
-        phi_nh_rec_global[fc] /= 8.0*Nx*Ny*Nr;
+        phi_nh_rec_global[fc] /= (8.0*Nx*Ny*Nr * rhsNorm);
 
     // Stop timing: phi_nh IFFT
     gettimeofday (&t2, NULL);
