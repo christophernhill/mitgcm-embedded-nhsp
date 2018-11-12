@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <complex.h>
 #include <sys/time.h>
 
 #include <fftw3.h>
@@ -189,14 +190,11 @@ void spectral_3d_poisson_solver_(
      * coefficients which we save to make sure that the forward and inverse transforms are
      * doing their job.
      */
-    double* source_term_hat_global = (double*) malloc(sizeof(double) * Nx*Ny*Nr);
-    double* source_term_rec_global = (double*) malloc(sizeof(double) * Nx*Ny*Nr);
-    double* phi_nh_hat_global      = (double*) malloc(sizeof(double) * Nx*Ny*Nr);
-    double* phi_nh_rec_global      = (double*) malloc(sizeof(double) * Nx*Ny*Nr);
-
-    printf("[F2C] Creating forward source term FFTW plan...\n");
-    forward_source_term_plan = fftw_plan_r2r_3d(Nr, Ny, Nx, source_term_global, source_term_hat_global,
-        FFTW_REDFT10, FFTW_REDFT10, FFTW_REDFT10, FFTW_MEASURE);
+    // int N_pad = 2 * ((Nx*Ny*Nr/2) + 1);
+    fftw_complex* source_term_hat_global = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * Nx*Ny*Nr);
+    fftw_complex* phi_nh_hat_global      = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * Nx*Ny*Nr);
+    double* source_term_rec_global = (double*) fftw_malloc(sizeof(double) * Nx*Ny*Nr);
+    double* phi_nh_rec_global      = (double*) fftw_malloc(sizeof(double) * Nx*Ny*Nr);
 
     gettimeofday(&t1, NULL); // Start timing: source term FFT
 
