@@ -196,6 +196,14 @@ void spectral_3d_poisson_solver_(
     double* source_term_rec_global = (double*) fftw_malloc(sizeof(double) * Nx*Ny*Nr);
     double* phi_nh_rec_global      = (double*) fftw_malloc(sizeof(double) * Nx*Ny*Nr);
 
+    gettimeofday(&t1, NULL); // Start timing: forward source term plan creation
+    printf("[F2C] Creating forward source term FFTW plan... ");
+    forward_source_term_plan = fftw_plan_dft_r2c_3d(Nr, Ny, Nx, source_term_global, source_term_hat_global,
+        FFTW_MEASURE);
+
+    gettimeofday (&t2, NULL); // Stop timing: forward source term plan creation
+    printf("(t=%ld us)\n", ((t2.tv_sec - t1.tv_sec) * 1000000L + t2.tv_usec) - t1.tv_usec);
+
     gettimeofday(&t1, NULL); // Start timing: source term FFT
 
     printf("[F2C] Executing forward source term FFTW plan... ");
@@ -210,9 +218,14 @@ void spectral_3d_poisson_solver_(
     fwrite(source_term_hat_global, sizeof(double), Nx*Ny*Nr, f_source_term_hat);
     fclose(f_source_term_hat);
 
-    printf("[F2C] Creating backward source term FFTW plan...\n");
-    backward_source_term_plan = fftw_plan_r2r_3d(Nr, Ny, Nx, source_term_hat_global, source_term_rec_global,
-        FFTW_RODFT01, FFTW_REDFT01, FFTW_REDFT01, FFTW_MEASURE);
+    // gettimeofday(&t1, NULL); // Start timing: backward source term plan creation
+
+    // printf("[F2C] Creating backward source term FFTW plan... ");
+    // backward_source_term_plan = fftw_plan_dft_c2r_3d(Nr, Ny, Nx, source_term_hat_global, source_term_rec_global,
+    //     FFTW_MEASURE);
+
+    // gettimeofday (&t2, NULL); // Stop timing: backward source term plan creation
+    // printf("(t=%ld us)\n", ((t2.tv_sec - t1.tv_sec) * 1000000L + t2.tv_usec) - t1.tv_usec);
 
     printf("[F2C] Executing backward source term FFTW plan...\n");
     fftw_execute(backward_source_term_plan);
@@ -234,6 +247,25 @@ void spectral_3d_poisson_solver_(
     int delta_y = 2000 / Ny;
     int delta_r = 1000 / Nr;
 
+    printf("[F2C] Saving %s...\n", phi_nh_hat_filename);
+    FILE *f_phi_nh_hat = fopen(phi_nh_hat_filename, "wb");
+    fwrite(phi_nh_hat_global, sizeof(double), Nx*Ny*Nr, f_phi_nh_hat);
+    fclose(f_phi_nh_hat);
+
+    printf("[F2C] phi_nh_hat_global[250000]=%g%+gi\n", creal(phi_nh_hat_global[250000]), cimag(phi_nh_hat_global[250000]));
+    printf("[F2C] phi_nh_rec_global[250000]=%g%+gi\n", creal(phi_nh_rec_global[250000]), cimag(phi_nh_rec_global[250000]));
+
+    gettimeofday(&t1, NULL); // Start timing: backward phi_nh plan creation
+
+    printf("[F2C] Creating backward phi_nh FFTW plan... ");
+    backward_phi_nh_plan = fftw_plan_dft_c2r_3d(Nr, Ny, Nx, phi_nh_hat_global, phi_nh_rec_global,
+        FFTW_MEASURE);
+
+    if (backward_phi_nh_plan == NULL)
+        printf("[F2C] ERROR: backward_phi_nh_plan was returned as NULL plan!");
+
+    gettimeofday (&t2, NULL); // Stop timing: backward phi_nh plan creation
+    printf("(t=%ld us)\n", ((t2.tv_sec - t1.tv_sec) * 1000000L + t2.tv_usec) - t1.tv_usec);
     gettimeofday(&t1, NULL); // Start timing: Fourier coefficient computation
 
     printf("[F2C] Computing phi_nh Fourier coefficients... ");
