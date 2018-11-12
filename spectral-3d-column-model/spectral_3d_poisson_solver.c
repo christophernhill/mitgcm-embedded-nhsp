@@ -80,8 +80,8 @@ void spectral_3d_poisson_solver_(
     printf("[F2C] Sy_idx_max=%d, Sx_idx_max=%d, r_idx_max=%d, y_idx_max=%d, x_idx_max=%d, flat_idx_max=%d\n",
         Sy_idx_max, Sx_idx_max, r_idx_max, y_idx_max, x_idx_max, flat_idx_max);
 
-    double* phi_nh_global      = (double*) malloc(sizeof(double) * Nx*Ny*Nr);
-    double* source_term_global = (double*) malloc(sizeof(double) * Nx*Ny*Nr);
+    double* phi_nh_global      = (double*) fftw_malloc(sizeof(double) * Nx*Ny*Nr);
+    double* source_term_global = (double*) fftw_malloc(sizeof(double) * Nx*Ny*Nr);
 
     /* The following loop converts from 5D tiled coordinates (x,y,r,Sx,Sy) to 3D global coordinates (x,y,r)
      * and populates global versions of the fields allocated above.
@@ -303,10 +303,10 @@ void spectral_3d_poisson_solver_(
 
     fftw_cleanup();
 
-    free(phi_nh_global);
-    free(source_term_global);
-    free(source_term_hat_global);
-    free(source_term_rec_global);
-    free(phi_nh_hat_global);
-    free(phi_nh_rec_global);
+    fftw_free(phi_nh_global);
+    fftw_free(source_term_global);
+    fftw_free(source_term_hat_global);
+    fftw_free(source_term_rec_global);
+    fftw_free(phi_nh_hat_global);
+    fftw_free(phi_nh_rec_global);
 }
