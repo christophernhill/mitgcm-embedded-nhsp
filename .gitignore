@@ -1,9 +1,15 @@
-# Ignoring binary data output.
+# Binary data output.
 *.dat
+*.out
 
-# Ignoring text output.
+# Text output and logs.
 *.log
 
-# Ignoring plotting outputs.
+# Plots and movies.
 *.png
 *.mp4
+
+# Executables
+spectral_3d_poisson_solver
+fftw_dct_mtomp
+fftw_dct_mpi_nd
