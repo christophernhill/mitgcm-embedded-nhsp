@@ -133,7 +133,7 @@ void spectral_3d_poisson_solver_(
 
             if (fabs(source_term_global[idx_global]) > rhsMax) {
                 rhsMax = fabs(source_term_global[idx_global]);
-                printf("[F2C] rhsMax=%+e\n", rhsMax);
+                // printf("[F2C] rhsMax=%+e\n", rhsMax);
             }
 
             if (idx_global == 0)
@@ -209,9 +209,12 @@ void spectral_3d_poisson_solver_(
     printf("[F2C] Executing forward source term FFTW plan... ");
     fftw_execute(forward_source_term_plan);
 
-    // Stop timing: source term FFT
-    gettimeofday (&t2, NULL);
+    gettimeofday (&t2, NULL); // Stop timing: source term FFT
     printf("(t=%ld us)\n", ((t2.tv_sec - t1.tv_sec) * 1000000L + t2.tv_usec) - t1.tv_usec);
+
+    printf("[F2C] source_term_hat_global[     0]=%f%+fi\n", creal(source_term_hat_global[0]), cimag(source_term_hat_global[0]));
+    printf("[F2C] source_term_hat_global[  1000]=%f%+fi\n", creal(source_term_hat_global[100]), cimag(source_term_hat_global[100]));
+    printf("[F2C] source_term_hat_global[250000]=%f%+fi\n", creal(source_term_hat_global[250000]), cimag(source_term_hat_global[250000]));
 
     printf("[F2C] Saving %s...\n", source_term_hat_filename);
     FILE *f_source_term_hat = fopen(source_term_hat_filename, "wb");
@@ -227,20 +230,20 @@ void spectral_3d_poisson_solver_(
     // gettimeofday (&t2, NULL); // Stop timing: backward source term plan creation
     // printf("(t=%ld us)\n", ((t2.tv_sec - t1.tv_sec) * 1000000L + t2.tv_usec) - t1.tv_usec);
 
-    printf("[F2C] Executing backward source term FFTW plan...\n");
-    fftw_execute(backward_source_term_plan);
+    // printf("[F2C] Executing backward source term FFTW plan...\n");
+    // fftw_execute(backward_source_term_plan);
 
     /* FFTW employs an unnormalized IFFT, so if we want to get back the original field we need
      * to divide the coefficients by 2N for each dimension, or 8*Nx*Ny*Nz in our case.
      */
     int fc; // Fourier coefficient counter.
-    for (fc = 0; fc < Nx*Ny*Nr; fc++)
-        source_term_rec_global[fc] /= 8.0*Nx*Ny*Nr;
+    // for (fc = 0; fc < Nx*Ny*Nr; fc++)
+    //     source_term_rec_global[fc] /= 8.0*Nx*Ny*Nr;
 
-    printf("[F2C] Saving %s...\n", source_term_rec_filename);
-    FILE *f_source_term_rec = fopen(source_term_rec_filename, "wb");
-    fwrite(source_term_rec_global, sizeof(double), Nx*Ny*Nr, f_source_term_rec);
-    fclose(f_source_term_rec);
+    // printf("[F2C] Saving %s...\n", source_term_rec_filename);
+    // FILE *f_source_term_rec = fopen(source_term_rec_filename, "wb");
+    // fwrite(source_term_rec_global, sizeof(double), Nx*Ny*Nr, f_source_term_rec);
+    // fclose(f_source_term_rec);
 
     // TODO: These are hard-coded for now but I should pass the domain size too.
     int delta_x = 2000 / Nx;
@@ -266,10 +269,13 @@ void spectral_3d_poisson_solver_(
 
     gettimeofday (&t2, NULL); // Stop timing: backward phi_nh plan creation
     printf("(t=%ld us)\n", ((t2.tv_sec - t1.tv_sec) * 1000000L + t2.tv_usec) - t1.tv_usec);
+
     gettimeofday(&t1, NULL); // Start timing: Fourier coefficient computation
 
     printf("[F2C] Computing phi_nh Fourier coefficients... ");
 
+    // TODO? Allocate phi_nh_hat_global as an array of pointers to we can just triple for loop
+    // it using [i][j][k] and speed up this loop?
     for (fc = 0; fc < Nx*Ny*Nr; fc++) {
         int idx = fc;
 
@@ -299,31 +305,26 @@ void spectral_3d_poisson_solver_(
         } else {
             phi_nh_hat_global[fc] = factor * source_term_hat_global[fc];
         }
+
+        if (fc == 0 || fc == 100 || fc == 250000)
+            printf("[F2C] %g%+gi = phi_nh_hat_global[%d] = %g * %g%+gi\n", creal(phi_nh_hat_global[fc]), cimag(phi_nh_hat_global[fc]), fc, factor, creal(source_term_hat_global[fc]), cimag(source_term_hat_global[fc]));
     }
 
-    // Stop timing: Fourier coefficient computation
-    gettimeofday (&t2, NULL);
+    gettimeofday (&t2, NULL); // Stop timing: Fourier coefficient computation
     printf("(t=%ld us)\n", ((t2.tv_sec - t1.tv_sec) * 1000000L + t2.tv_usec) - t1.tv_usec);
-
-    printf("[F2C] Saving %s...\n", phi_nh_hat_filename);
-    FILE *f_phi_nh_hat = fopen(phi_nh_hat_filename, "wb");
-    fwrite(phi_nh_hat_global, sizeof(double), Nx*Ny*Nr, f_phi_nh_hat);
-    fclose(f_phi_nh_hat);
-
-    printf("[F2C] Creating backward phi_nh FFTW plan...\n");
-    backward_phi_nh_plan = fftw_plan_r2r_3d(Nr, Ny, Nx, phi_nh_hat_global, phi_nh_rec_global,
-        FFTW_REDFT01, FFTW_REDFT01, FFTW_REDFT01, FFTW_MEASURE);
 
     gettimeofday(&t1, NULL); // Start timing: phi_nh IFFT
 
     printf("[F2C] Executing backward phi_nh FFTW plan... ");
     fftw_execute(backward_phi_nh_plan);
 
+    printf("[F2C] phi_nh_hat_global[250000]=%g%+gi\n", creal(phi_nh_hat_global[250000]), cimag(phi_nh_hat_global[250000]));
+    printf("[F2C] phi_nh_rec_global[250000]=%g%+gi\n", creal(phi_nh_rec_global[250000]), cimag(phi_nh_rec_global[250000]));
+
     for (fc = 0; fc < Nx*Ny*Nr; fc++)
         phi_nh_rec_global[fc] /= (8.0*Nx*Ny*Nr * rhsNorm);
 
-    // Stop timing: phi_nh IFFT
-    gettimeofday (&t2, NULL);
+    gettimeofday (&t2, NULL); // Stop timing: phi_nh IFFT
     printf("(t=%ld us)\n", ((t2.tv_sec - t1.tv_sec) * 1000000L + t2.tv_usec) - t1.tv_usec);
 
     printf("[F2C] Saving %s...\n", phi_nh_rec_filename);
